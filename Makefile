@@ -12,7 +12,7 @@ tsdb: ingest query
 
 .PHONY: push
 push:
-	docker tag tsdb-ingest:latest levrado1/tsdb-ingest:latest
-	docker push levrado1/tsdb-ingest:latest
-	docker tag tsdb-query:latest levrado1/tsdb-query:latest
-	docker push levrado1/tsdb-query:latest
+	docker tag tsdb-ingest:latest iguaziodocker/tsdb-ingest:1.9.0
+	docker push iguaziodcoker/tsdb-ingest:1.9.0
+	docker tag tsdb-query:latest iguaziodocker/tsdb-query:1.9.0
+	docker push iguaziodocker/tsdb-query:1.9.0
