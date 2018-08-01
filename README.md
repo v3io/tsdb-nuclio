@@ -1,6 +1,6 @@
-# tsdb-nuclio
+# TSDB nuclio
 
-To build the docker files run:
+To build the docker iamges run:
 ```bash
 $ make tsdb
 ```
