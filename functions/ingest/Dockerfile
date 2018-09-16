@@ -1,6 +1,6 @@
 ARG NUCLIO_TAG=0.5.8
 ARG NUCLIO_ARCH=amd64
-ARG NUCLIO_BASE_IMAGE=alpine:3.6
+ARG NUCLIO_BASE_IMAGE=alpine:3.7
 ARG NUCLIO_ONBUILD_IMAGE=nuclio/handler-builder-golang-onbuild:${NUCLIO_TAG}-${NUCLIO_ARCH}-alpine
 
 # Builds source, supplies processor binary and handler plugin
