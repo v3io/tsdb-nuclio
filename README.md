@@ -38,21 +38,26 @@ TSDB_DOCKER_REPO=<TSDB_DOCKER_REPO> make push
 
 Create a project for the functions:
 ```sh
-nuctl create project tsdb --display-name 'Time-series reference'
+nuctl create project tsdb \
+    --namespace NUCLIO_NAMESPACE \
+    --display-name 'Time-series reference'
 ```
+
+Where:
+- `NUCLIO_NAMESPACE`: The namespace to which the the function will be deployed
 
 Deploy the ingest function to your cluster:
 ```sh
 nuctl deploy \
-  --namespace <NUCLIO_NAMESPACE> \
-  --run-image <TSDB_DOCKER_REPO>/tsdb-ingest:latest \
-  --runtime golang \
-  --handler main:Ingest \
-  --project-name tsdb \
-  --readiness-timeout 10 \
-  --data-bindings '{"db0": {"class": "v3io", "url": "<TSDB_CONTAINER_URL>", "secret": "<TSDB_CONTAINER_USERNAME>:<TSDB_CONTAINER_PASSWORD>"}}' \
-  --env INGEST_V3IO_TSDB_PATH=<TSDB_TSDB_TABLE_NAME> \
-  tsdb-ingest
+    --namespace <NUCLIO_NAMESPACE> \
+    --run-image <TSDB_DOCKER_REPO>/tsdb-ingest:latest \
+    --runtime golang \
+    --handler main:Ingest \
+    --project-name tsdb \
+    --readiness-timeout 10 \
+    --data-bindings '{"db0": {"class": "v3io", "url": "<TSDB_CONTAINER_URL>", "secret": "<TSDB_CONTAINER_USERNAME>:<TSDB_CONTAINER_PASSWORD>"}}' \
+    --env INGEST_V3IO_TSDB_PATH=<TSDB_TSDB_TABLE_NAME> \
+    tsdb-ingest
 ```
 
 Where:
