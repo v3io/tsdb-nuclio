@@ -21,7 +21,6 @@ such restriction.
 package tsdbctl
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/v3io/v3io-tsdb/pkg/formatter"
@@ -166,33 +165,7 @@ func (qc *queryCommandeer) query() error {
 		return errors.Wrap(err, "failed to start formatter "+qc.output)
 	}
 
-	return f.Write(qc.cmd.OutOrStdout(), set)
+	err = f.Write(qc.cmd.OutOrStdout(), set)
 
-	//return qc.printSet(set)
-}
-
-func (qc *queryCommandeer) printSet(set querier.SeriesSet) error {
-
-	for set.Next() {
-		if set.Err() != nil {
-			return set.Err()
-		}
-
-		series := set.At()
-		fmt.Println("Lables:", series.Labels())
-		iter := series.Iterator()
-		for iter.Next() {
-
-			if iter.Err() != nil {
-				return iter.Err()
-			}
-
-			t, v := iter.At()
-			timeString := time.Unix(t/1000, 0).Format(time.RFC3339)
-			fmt.Printf("%s  v=%.2f\n", timeString, v)
-		}
-		fmt.Println()
-	}
-
-	return nil
+	return err
 }

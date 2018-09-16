@@ -26,7 +26,16 @@ import (
 	"os"
 )
 
-const DefaultConfigurationFileName = "v3io.yaml"
+const (
+	V3ioConfigEnvironmentVariable = "V3IO_CONF"
+	DefaultConfigurationFileName  = "v3io.yaml"
+	SCHEMA_CONFIG                 = ".schema"
+
+	defaultNumberOfIngestWorkers = 1
+	defaultNumberOfQueryWorkers  = 8
+	defaultBatchSize             = 64
+	defaultTimeoutInSeconds      = 24 * 60 * 60 // 24 hours
+)
 
 type V3ioConfig struct {
 	// V3IO Connection details: Url, Data container, relative path for this dataset, credentials
@@ -48,44 +57,65 @@ type V3ioConfig struct {
 	MaxBehind int `json:"maxBehind"`
 	// Override last chunk (by default on restart it will append from the last point if possible)
 	OverrideOld bool `json:"overrideOld"`
+	// Default timeout duration in Seconds (if not set, 1 Hour timeout will be used )
+	DefaultTimeoutInSeconds int `json:"timeout,omitempty"`
+	// The size of batch to use during ingestion
+	BatchSize int `json:"batchSize,omitempty"`
+	// Sample size in bytes in worst compression scenario
+	MaximumSampleSize int `json:"maximumSampleSize,omitempty"`
+	// Max size of a partition object
+	MaximumPartitionSize int `json:"maximumPartitionSize,omitempty"`
+	// Size of chunk in bytes for worst an best compression scenarios
+	MinimumChunkSize int `json:"minimumChunkSize,omitempty"`
+	MaximumChunkSize int `json:"maximumChunkSize,omitempty"`
 }
 
-type DBPartConfig struct {
-	// Indicating this is a valid Partition file, Signature == 'TSDB'
-	Signature string `json:"signature"`
-	// Version of the config
-	Version string `json:"version"`
-	// Description of this TSDB
-	Description string `json:"description,omitempty"`
-	// Partition Key, __name__ by default
-	ShardingKey string `json:"partitionKey,omitempty"`
-	// Sorting Key, dimensions used for sorting per DB shard
-	SortingKey string `json:"sortingKey,omitempty"`
-	// indicate if it is cyclic (single partition, return to first chunk after the last)
-	IsCyclic bool `json:"isCyclic,omitempty"`
-	// Number of hours per chunk (1hr default)
-	HrInChunk int `json:"hrInChunk,omitempty"`
-	// Days per table/object (in a partition), after N days will use a new table or go to start (Cyclic partition)
-	// this is used only for the Head configuration, per partition we look at StartTime & EndTime
-	DaysPerObj int `json:"daysPerObj,omitempty"`
-	// How many days to save samples
-	DaysRetention int `json:"daysRetention,omitempty"`
-	// Start from time/date in Unix milisec
-	StartTime int64 `json:"startTime,omitempty"`
-	// End by time/date in Unix milisec
-	EndTime int64 `json:"endTime,omitempty"`
-	// Partition name format e.g. 'dd-mm-yy'
-	PartFormat string `json:"partFormat,omitempty"`
+type Rollup struct {
+	Aggregators            []string `json:"aggregators"`
+	AggregatorsGranularity string   `json:"aggregatorsGranularity"`
+	//["cloud","local"] for the aggregators and sample chunks
+	StorageClass string `json:"storageClass"`
+	//in hours. 0  means no need to save samples
+	SampleRetention int `json:"sampleRetention"`
+	// format : 1m, 7d, 3h . Possible intervals: m/d/h
+	LayerRetentionTime string `json:"layerRetentionTime"`
+}
 
-	// Comma seperated list of default aggregation functions e.g. 'count,sum,avg,max'
-	DefaultRollups string `json:"defaultRollups,omitempty"`
-	// Number of minutes per aggregation bucket (aggregation interval)
-	RollupMin int `json:"rollupMin,omitempty"`
-	// If true, dont save raw samples/chunks, only aggregates
-	DelRawSamples bool `json:"delRawSamples,omitempty"`
+type TableSchema struct {
+	Version             int      `json:"version"`
+	RollupLayers        []Rollup `json:"rollupLayers"`
+	ShardingBuckets     int      `json:"shardingBuckets"`
+	PartitionerInterval string   `json:"partitionerInterval"`
+	ChunckerInterval    string   `json:"chunckerInterval"`
+}
 
-	// Metric specific policy
-	MetricsConfig map[string]MetricConfig `json:"metricsConfig,omitempty"`
+type PartitionSchema struct {
+	Version                int      `json:"version"`
+	Aggregators            []string `json:"aggregators"`
+	AggregatorsGranularity string   `json:"aggregatorsGranularity"`
+	StorageClass           string   `json:"storageClass"`
+	SampleRetention        int      `json:"sampleRetention"`
+	PartitionerInterval    string   `json:"partitionerInterval"`
+	ChunckerInterval       string   `json:"chunckerInterval"`
+}
+
+type Partition struct {
+	StartTime  int64           `json:"startTime"`
+	SchemaInfo PartitionSchema `json:"schemaInfo"`
+}
+
+type SchemaField struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Nullable bool   `json:"nullable"`
+	Items    string `json:"items,omitempty"`
+}
+
+type Schema struct {
+	TableSchemaInfo     TableSchema     `json:"tableSchemaInfo"`
+	PartitionSchemaInfo PartitionSchema `json:"partitionSchemaInfo"`
+	Partitions          []*Partition    `json:"partitions"`
+	Fields              []SchemaField   `json:"fields"`
 }
 
 type MetricConfig struct {
@@ -100,7 +130,7 @@ type MetricConfig struct {
 
 func LoadConfig(path string) (*V3ioConfig, error) {
 
-	envpath := os.Getenv("V3IO_TSDBCFG_PATH")
+	envpath := os.Getenv(V3ioConfigEnvironmentVariable)
 	if envpath != "" {
 		path = envpath
 	}
@@ -129,15 +159,24 @@ func LoadFromData(data []byte) (*V3ioConfig, error) {
 func InitDefaults(cfg *V3ioConfig) {
 	// Initialize default number of workers
 	if cfg.Workers == 0 {
-		cfg.Workers = 8
+		cfg.Workers = defaultNumberOfIngestWorkers
 	}
 
 	// init default number Query workers if not set to Min(8,Workers)
 	if cfg.QryWorkers == 0 {
-		if cfg.Workers < 8 {
+		if cfg.Workers < defaultNumberOfQueryWorkers {
 			cfg.QryWorkers = cfg.Workers
 		} else {
-			cfg.QryWorkers = 8
+			cfg.QryWorkers = defaultNumberOfQueryWorkers
 		}
+	}
+
+	// init default batch size
+	if cfg.BatchSize <= 0 {
+		cfg.BatchSize = defaultBatchSize
+	}
+
+	if cfg.DefaultTimeoutInSeconds == 0 {
+		cfg.DefaultTimeoutInSeconds = int(defaultTimeoutInSeconds)
 	}
 }

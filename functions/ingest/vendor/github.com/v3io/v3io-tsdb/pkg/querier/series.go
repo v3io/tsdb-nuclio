@@ -39,15 +39,35 @@ type V3ioSeries struct {
 	set  *V3ioSeriesSet
 	lset utils.Labels
 	iter SeriesIterator
+	hash uint64
 }
 
-func (s *V3ioSeries) Labels() utils.Labels     { return s.lset }
+func (s *V3ioSeries) Labels() utils.Labels { return s.lset }
+
+// get the unique series key for sorting
+func (s *V3ioSeries) GetKey() uint64 {
+	if s.hash == 0 {
+		s.hash = s.lset.Hash()
+	}
+	return s.hash
+}
+
 func (s *V3ioSeries) Iterator() SeriesIterator { return s.iter }
 
 // initialize the label set from _lset & name attributes
 func initLabels(set *V3ioSeriesSet) utils.Labels {
-	name := set.iter.GetField("_name").(string)
-	lsetAttr := set.iter.GetField("_lset").(string)
+	name, nok := set.iter.GetField("_name").(string)
+	if !nok {
+		name = "UNKNOWN"
+	}
+	lsetAttr, lok := set.iter.GetField("_lset").(string)
+	if !lok {
+		lsetAttr = "UNKNOWN"
+	}
+	if !lok || !nok {
+		set.logger.Error("Error in initLabels, bad field values")
+	}
+
 	lset := utils.Labels{utils.Label{Name: "__name__", Value: name}}
 
 	splitLset := strings.Split(lsetAttr, ",")
@@ -71,7 +91,7 @@ func (s *V3ioSeries) initSeriesIter() {
 	}
 
 	newIterator := v3ioSeriesIterator{
-		mint: s.set.mint, maxt: maxt, chunkTime: s.set.partition.HoursInChunk() * 3600 * 1000,
+		mint: s.set.mint, maxt: maxt, chunkTime: s.set.partition.TimePerChunk(),
 		isCyclic: s.set.partition.IsCyclic()}
 	newIterator.chunks = []chunkenc.Chunk{}
 
@@ -108,7 +128,7 @@ type v3ioSeriesIterator struct {
 
 	chunks     []chunkenc.Chunk
 	chunkIndex int
-	chunkTime  int
+	chunkTime  int64
 	iter       chunkenc.Iterator
 }
 
@@ -148,8 +168,6 @@ func (it *v3ioSeriesIterator) Seek(t int64) bool {
 			it.iter = it.chunks[it.chunkIndex].Iterator()
 		}
 	}
-
-	return false
 }
 
 // move to the next iterator item
@@ -195,16 +213,28 @@ func NewAggrSeries(set *V3ioSeriesSet, aggr aggregate.AggrType) *V3ioSeries {
 	newSeries := V3ioSeries{set: set}
 	lset := append(initLabels(set), utils.Label{Name: "Aggregator", Value: aggr.String()})
 	newSeries.lset = lset
+
 	if set.nullSeries {
 		newSeries.iter = &nullSeriesIterator{}
 	} else {
-		newSeries.iter = &aggrSeriesIterator{set: set, aggrType: aggr, index: -1}
+
+		// `set`, the thing this iterator "iterates" over is stateful - it holds a "current" set and aggrSet.
+		// this means we need to copy all the stateful things we need into the iterator (e.g. aggrSet) so that
+		// when it's evaluated, it'll hold the proper pointer
+		newSeries.iter = &aggrSeriesIterator{
+			set:      set,
+			aggrSet:  set.aggrSet,
+			aggrType: aggr,
+			index:    -1,
+		}
 	}
+
 	return &newSeries
 }
 
 type aggrSeriesIterator struct {
 	set      *V3ioSeriesSet
+	aggrSet  *aggregate.AggregateSet
 	aggrType aggregate.AggrType
 	index    int
 	err      error
@@ -213,10 +243,11 @@ type aggrSeriesIterator struct {
 // advance iterator to time t
 func (s *aggrSeriesIterator) Seek(t int64) bool {
 	if t <= s.set.baseTime {
+		s.index = 0
 		return true
 	}
 
-	if t > s.set.baseTime+int64(s.set.aggrSet.GetMaxCell())*s.set.interval {
+	if t > s.set.baseTime+int64(s.aggrSet.GetMaxCell())*s.set.interval {
 		return false
 	}
 
@@ -226,7 +257,7 @@ func (s *aggrSeriesIterator) Seek(t int64) bool {
 
 // advance to the next time interval/bucket
 func (s *aggrSeriesIterator) Next() bool {
-	if s.index >= s.set.aggrSet.GetMaxCell() {
+	if s.index >= s.aggrSet.GetMaxCell() {
 		return false
 	}
 
@@ -236,8 +267,8 @@ func (s *aggrSeriesIterator) Next() bool {
 
 // return the time & value at the current bucket
 func (s *aggrSeriesIterator) At() (t int64, v float64) {
-	val := s.set.aggrSet.GetCellValue(s.aggrType, s.index)
-	return s.set.aggrSet.GetCellTime(s.set.baseTime, s.index), val
+	val, _ := s.aggrSet.GetCellValue(s.aggrType, s.index)
+	return s.aggrSet.GetCellTime(s.set.baseTime, s.index), val
 }
 
 func (s *aggrSeriesIterator) Err() error { return s.err }
