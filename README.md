@@ -7,16 +7,18 @@
 4. A data container HTTP URL, username/password for it and a TSDB table under it
 5. The URL and credentials of the Docker registry Nuclio was configured to work with
 
-To build without internet connectivity, you will need the Golang onbuild image (`nuclio/handler-builder-golang-onbuild:0.5.8-amd64-alpine`) and base image (`alpine:3.7`) present locally.
+To build without internet connectivity, you will need the Golang onbuild image (`nuclio/handler-builder-golang-onbuild:0.5.11-amd64-alpine`) and base image (`alpine:3.7`) present locally.
 
 ### Building / deploying the functions
 
 Clone this repository and `cd` into it:
 ```sh
 mkdir tsdb-nuclio && \
-    git clone git@github.com:v3io/tsdb-nuclio.git tsdb-nuclio/src/github.com/v3io/tsdb-nuclio && \
+    git clone https://github.com/v3io/tsdb-nuclio.git tsdb-nuclio/src/github.com/v3io/tsdb-nuclio && \
     cd tsdb-nuclio/src/github.com/v3io/tsdb-nuclio
 ```
+
+> Note: The `make` commands here use Docker. If you need root privileges to run Docker commands you need to make with `sudo` or as root
 
 Build the Nuclio functions:
 ```sh
