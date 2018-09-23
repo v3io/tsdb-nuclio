@@ -20,10 +20,10 @@ mkdir tsdb-nuclio && \
 
 Build the Nuclio functions:
 ```sh
-make tsdb
+make build
 ```
 
-This will build a local Docker image - `tsdb-ingest:latest`
+This will build local Docker images - `tsdb-ingest:latest` and `tsdb-query:latest`
 
 > Note: To prevent the build process from accessing the internet, set the `NUCLIO_BUILD_OFFLINE` environment variable to `true`
 
@@ -46,7 +46,7 @@ nuctl create project tsdb \
 Where:
 - `NUCLIO_NAMESPACE`: The namespace to which the the function will be deployed
 
-Deploy the ingest function to your cluster:
+Deploy the ingest and query functions to your cluster:
 ```sh
 nuctl deploy \
     --namespace <NUCLIO_NAMESPACE> \
@@ -58,6 +58,17 @@ nuctl deploy \
     --data-bindings '{"db0": {"class": "v3io", "url": "<TSDB_CONTAINER_URL>", "secret": "<TSDB_CONTAINER_USERNAME>:<TSDB_CONTAINER_PASSWORD>"}}' \
     --env INGEST_V3IO_TSDB_PATH=<TSDB_TSDB_TABLE_NAME> \
     tsdb-ingest
+
+nuctl deploy \
+    --namespace <NUCLIO_NAMESPACE> \
+    --run-image <TSDB_DOCKER_REPO>/tsdb-query:latest \
+    --runtime golang \
+    --handler main:Query \
+    --project-name tsdb \
+    --readiness-timeout 10 \
+    --data-bindings '{"db0": {"class": "v3io", "url": "<TSDB_CONTAINER_URL>", "secret": "<TSDB_CONTAINER_USERNAME>:<TSDB_CONTAINER_PASSWORD>"}}' \
+    --env INGEST_V3IO_TSDB_PATH=<TSDB_TSDB_TABLE_NAME> \
+    tsdb-query
 ```
 
 Where:
@@ -78,28 +89,49 @@ Post a metric to the function with your favorite HTTP client:
 echo '{
   "metric": "cpu",
   "labels": {
-    "dc": "7",
-    "hostname": "mybesthost"
+    "site_id": "0001",
+    "device_id": "12"
   },
   "samples": [
     {
-      "time": "now",
+      "time": "1537724629000",
       "value": {
-        "N": 95.2
-      }
-    },
-    {
-      "time": "now",
-      "value": {
-        "n": 86.8
+        "n": 95.2
       }
     }
   ]
 }' | http http://<TSDB_APPNODE_IP>:<TSDB_INGEST_NODE_PORT>
-
 ```
 
 Where:
 - `TSDB_APPNODE_IP`: An IP address of one of the application nodes
 - `TSDB_INGEST_NODE_PORT`: As printed by the previous step
 
+You should receive a 200 OK with an empty body in response. Now execute a query through the query function:
+```sh
+echo '{
+    "metric": "cpu",
+    "step": "1m",
+    "from": "1537724600000",
+    "to": "1537724730000"
+}' | http http://<TSDB_APPNODE_IP>:<TSDB_QUERY_NODE_PORT>
+```
+
+Where:
+- `TSDB_APPNODE_IP`: An IP address of one of the application nodes
+- `TSDB_QUERY_NODE_PORT`: As printed by the previous step
+
+The response should be a 200 OK with the following body:
+```json
+[
+    {
+        "datapoints": [
+            [
+                95.2,
+                1537724629000
+            ]
+        ],
+        "target": "cpu{device_id=12,site_id=0001}"
+    }
+]
+```
