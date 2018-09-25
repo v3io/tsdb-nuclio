@@ -24,14 +24,14 @@ import (
 //		},
 //		"samples": [
 //			{
-//				"time": "1532595945142",
-//				"value": {
+//				"t": "1532595945142",
+//				"v": {
 //					"N": 95.2
 //				}
 //			},
 //			{
-//				"time": "1532595948517",
-//				"value": {
+//				"t": "1532595948517",
+//				"v": {
 //					"n": 86.8
 //				}
 //			}
@@ -43,8 +43,8 @@ type value struct {
 }
 
 type sample struct {
-	Time  string `json:"time,omitempty"`
-	Value value  `json:"value,omitempty"`
+	Time  string `json:"t,omitempty"`
+	Value value  `json:"v,omitempty"`
 }
 
 type request struct {

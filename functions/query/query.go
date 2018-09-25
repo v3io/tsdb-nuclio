@@ -21,18 +21,18 @@ import (
 // {
 //     "metric": "cpu",
 //     "step": "1m",
-//     "from": "1537724620",
-//     "to": "1537724630"
+//     "start_time": "1537724620",
+//     "end_time": "1537724630"
 // }
 
 type request struct {
-	Metric      string   `json:"metric"`
-	Aggregators []string `json:"aggregators"`
-	Step        string   `json:"step"`
-	Filter      string   `json:"filter"`
-	From        string   `json:"from"`
-	To          string   `json:"to"`
-	Last        string   `json:"last"`
+	Metric           string   `json:"metric"`
+	Aggregators      []string `json:"aggregators"`
+	FilterExpression string   `json:"filter_expression"`
+	Step             string   `json:"step"`
+	StartTime        string   `json:"start_time"`
+	EndTime          string   `json:"end_time"`
+	Last             string   `json:"last"`
 }
 
 var adapter *tsdb.V3ioAdapter
@@ -49,7 +49,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	context.Logger.DebugWith("Got query request", "request", request)
 
 	// convert string times (unix or RFC3339 or relative like now-2h) to unix milisec times
-	from, to, step, err := utils.GetTimeFromRange(request.From, request.To, request.Last, request.Step)
+	from, to, step, err := utils.GetTimeFromRange(request.StartTime, request.EndTime, request.Last, request.Step)
 	if err != nil {
 		return nil, nuclio.WrapErrBadRequest(errors.Wrap(err, "Error parsing query time range"))
 	}
@@ -61,7 +61,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	}
 
 	// Select query to get back a series set iterator
-	seriesSet, err := querier.Select(request.Metric, strings.Join(request.Aggregators, ","), step, request.Filter)
+	seriesSet, err := querier.Select(request.Metric, strings.Join(request.Aggregators, ","), step, request.FilterExpression)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to execute query select")
 	}

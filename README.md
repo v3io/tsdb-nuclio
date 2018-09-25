@@ -96,8 +96,8 @@ echo '{
   },
   "samples": [
     {
-      "time": "1537724629000",
-      "value": {
+      "t": "1537724629000",
+      "v": {
         "n": 95.2
       }
     }
@@ -114,8 +114,8 @@ You should receive a 200 OK with an empty body in response. Now execute a query 
 echo '{
     "metric": "cpu",
     "step": "1m",
-    "from": "1537724600000",
-    "to": "1537724730000"
+    "start_time": "1537724600000",
+    "end_time": "1537724730000"
 }' | http http://<TSDB_APPNODE_IP>:<TSDB_QUERY_NODE_PORT>
 ```
 
