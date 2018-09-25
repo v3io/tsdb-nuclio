@@ -58,7 +58,7 @@ nuctl deploy \
     --project-name tsdb \
     --readiness-timeout 10 \
     --data-bindings '{"db0": {"class": "v3io", "url": "<TSDB_CONTAINER_URL>", "secret": "<TSDB_CONTAINER_USERNAME>:<TSDB_CONTAINER_PASSWORD>"}}' \
-    --env INGEST_V3IO_TSDB_PATH=<TSDB_TSDB_TABLE_NAME> \
+    --env INGEST_V3IO_TSDB_PATH=<TSDB_TABLE_PATH> \
     tsdb-ingest
 
 nuctl deploy \
@@ -69,7 +69,7 @@ nuctl deploy \
     --project-name tsdb \
     --readiness-timeout 10 \
     --data-bindings '{"db0": {"class": "v3io", "url": "<TSDB_CONTAINER_URL>", "secret": "<TSDB_CONTAINER_USERNAME>:<TSDB_CONTAINER_PASSWORD>"}}' \
-    --env INGEST_V3IO_TSDB_PATH=<TSDB_TSDB_TABLE_NAME> \
+    --env QUERY_V3IO_TSDB_PATH=<TSDB_TABLE_PATH> \
     tsdb-query
 ```
 
@@ -78,7 +78,7 @@ Where:
 - `TSDB_CONTAINER_URL`: The Iguazio container URL (e.g. `http://10.0.0.1:8081/bigdata`)
 - `TSDB_CONTAINER_USERNAME`: The Iguazio container username
 - `TSDB_CONTAINER_PASSWORD`: The Iguazio container password
-- `TSDB_TSDB_TABLE_NAME`: The TSDB table name (e.g. `mytsdb`)
+- `TSDB_TABLE_PATH`: The TSDB table name (e.g. `mytsdb`)
 - `NUCLIO_NAMESPACE`: The namespace to which the the function will be deployed
 
 `nuctl` will report to which NodePort the function was bound to (31848 in this case):

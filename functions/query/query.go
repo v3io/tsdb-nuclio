@@ -82,9 +82,9 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 func InitContext(context *nuclio.Context) error {
 
 	// get configuration from env
-	v3ioAdapterPath := os.Getenv("INGEST_V3IO_TSDB_PATH")
+	v3ioAdapterPath := os.Getenv("QUERY_V3IO_TSDB_PATH")
 	if v3ioAdapterPath == "" {
-		return errors.New("INGEST_V3IO_TSDB_PATH must be set")
+		return errors.New("QUERY_V3IO_TSDB_PATH must be set")
 	}
 
 	context.Logger.InfoWith("Initializing", "v3ioAdapterPath", v3ioAdapterPath)
