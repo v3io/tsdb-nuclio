@@ -107,13 +107,13 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 		})
 
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// create adapter once for all contexts
 		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, context.DataBinding["db0"].(*v3io.Container), context.Logger)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
