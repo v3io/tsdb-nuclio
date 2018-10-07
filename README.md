@@ -3,7 +3,7 @@
 ### Prerequisites
 1. Docker
 2. `nuctl` (https://github.com/nuclio/nuclio/releases)
-3. `kubeconfig` under `~/.kube/config` pointing to proper Kubernetes cluster with proper privileges (e.g. `cluster-admin`)
+3. `kubeconfig` under `~/.kube/config` pointing to proper Kubernetes cluster with proper privileges (e.g., `cluster-admin`)
 4. A data container HTTP URL, username/password for it and a TSDB table under it
 5. The URL and credentials of the Docker registry Nuclio was configured to work with
 
@@ -46,7 +46,7 @@ nuctl create project tsdb \
 ```
 
 Where:
-- `NUCLIO_NAMESPACE`: The namespace to which the the function will be deployed
+- `NUCLIO_NAMESPACE`: The namespace to which the function will be deployed
 
 Deploy the ingest and query functions to your cluster:
 ```sh
@@ -75,11 +75,11 @@ nuctl deploy \
 
 Where:
 - `TSDB_DOCKER_REPO`: The Docker registry to which the function image shall be pushed to
-- `TSDB_CONTAINER_URL`: The Iguazio container URL (e.g. `http://10.0.0.1:8081/bigdata`)
+- `TSDB_CONTAINER_URL`: The Iguazio container URL (e.g., `http://10.0.0.1:8081/bigdata`)
 - `TSDB_CONTAINER_USERNAME`: The Iguazio container username
 - `TSDB_CONTAINER_PASSWORD`: The Iguazio container password
-- `TSDB_TABLE_PATH`: The TSDB table name (e.g. `mytsdb`)
-- `NUCLIO_NAMESPACE`: The namespace to which the the function will be deployed
+- `TSDB_TABLE_PATH`: The TSDB table name (e.g., `mytsdb`)
+- `NUCLIO_NAMESPACE`: The namespace to which the function will be deployed
 
 `nuctl` will report to which NodePort the function was bound to (31848 in this case):
 ```sh
