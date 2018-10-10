@@ -65,7 +65,7 @@ func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 
 	// parse body
 	if err := json.Unmarshal(event.GetBody(), &request); err != nil {
-		return nuclio.WrapErrBadRequest(err), nil
+		return "", nuclio.WrapErrBadRequest(err)
 	}
 
 	// convert the map[string]string -> []Labels
