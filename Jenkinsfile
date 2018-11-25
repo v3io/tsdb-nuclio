@@ -12,7 +12,7 @@ podTemplate(label: "tsdb-nuclio-${label}", inheritFrom: 'kube-slave-dood') {
         ]) {
             stage('release') {
                 def TAG_VERSION = sh(
-                        script: "echo ${TAG_NAME} | tr -d '\\n' | egrep '^v[\\.0-9]*.*\$'",
+                        script: "echo ${TAG_NAME} | tr -d '\\n' | egrep '^v[\\.0-9]*.*\$' | sed 's/v//'",
                         returnStdout: true
                 ).trim()
                 if ( TAG_VERSION ) {
@@ -40,14 +40,14 @@ podTemplate(label: "tsdb-nuclio-${label}", inheritFrom: 'kube-slave-dood') {
                         container('docker-cmd') {
                             sh """
                                     cd ${BUILD_FOLDER}/src/github.com/v3io/tsdb-nuclio/functions/ingest
-                                    docker build . --tag tsdb-ingest:latest --tag ${docker_user}/tsdb-ingest:${TAG_VERSION/v/}
+                                    docker build . --tag tsdb-ingest:latest --tag ${docker_user}/tsdb-ingest:${TAG_VERSION}
 
                                     cd ${BUILD_FOLDER}/src/github.com/v3io/tsdb-nuclio/functions/query
-                                    docker build . --tag tsdb-query:latest --tag ${docker_user}/tsdb-query:${TAG_VERSION/v/}
+                                    docker build . --tag tsdb-query:latest --tag ${docker_user}/tsdb-query:${TAG_VERSION}
                             """
                             withDockerRegistry([credentialsId: "472293cc-61bc-4e9f-aecb-1d8a73827fae", url: ""]) {
-                                sh "docker push ${docker_user}/tsdb-ingest:${TAG_VERSION/v/}"
-                                sh "docker push ${docker_user}/tsdb-query:${TAG_VERSION/v/}"
+                                sh "docker push ${docker_user}/tsdb-ingest:${TAG_VERSION}"
+                                sh "docker push ${docker_user}/tsdb-query:${TAG_VERSION}"
                             }
                         }
                     }
