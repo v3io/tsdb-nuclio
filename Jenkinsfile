@@ -131,7 +131,11 @@ spec:
                         }
                     }
                 } else {
-                    echo "${TAG_VERSION} is not release tag."
+                    if (AUTO_TAG.startsWith("Autorelease")) {
+                        echo "Autorelease does not trigger this job."
+                    } else {
+                        echo "${TAG_VERSION} is not release tag."
+                    }
                 }
             }
         }
