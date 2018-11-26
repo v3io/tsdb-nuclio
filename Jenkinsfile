@@ -28,13 +28,6 @@ spec:
         requests:
           cpu: 1
           memory: 2Gi
-      env:
-      - name: POD_IP
-        valueFrom:
-          fieldRef:
-            fieldPath: status.podIP
-      - name: DOCKER_HOST
-        value: tcp://localhost:2375
       volumeMounts:
         - name: go-shared
           mountPath: /go
@@ -73,7 +66,7 @@ spec:
 
                         sh "curl -v -H \"Authorization: token ${GIT_TOKEN}\" https://api.github.com/repos/gkirok/tsdb-nuclio/releases/tags/v${TAG_VERSION} > ~/tag_version"
                         AUTO_TAG = sh(
-                                script: "cat ~/tag_version",
+                                script: "cat ~/tag_version | python -c 'import json,sys;obj=json.load(sys.stdin);print obj[\"body\"]",
                                 returnStdout: true
                         ).trim()
                     }
