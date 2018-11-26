@@ -8,26 +8,32 @@ properties([pipelineTriggers([[$class: 'PeriodicFolderTrigger', interval: '2m']]
 podTemplate(label: "tsdb-nuclio-${label}", inheritFrom: 'kube-slave-dood') {
     node("tsdb-nuclio-${label}") {
         withCredentials([
-                usernamePassword(credentialsId: '4318b7db-a1af-4775-b871-5a35d3e75c21', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')
+                usernamePassword(credentialsId: '4318b7db-a1af-4775-b871-5a35d3e75c21', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME'),
+                string(credentialsId: 'dd7f75c5-f055-4eb3-9365-e7d04e644211', variable: 'GIT_TOKEN')
         ]) {
             stage('release') {
                 def AUTO_TAG
                 def TAG_VERSION
 
                 stage('get tag data') {
-                    TAG_VERSION = sh(
-                            script: "echo ${TAG_NAME} | tr -d '\\n' | egrep '^v[\\.0-9]*.*\$' | sed 's/v//'",
-                            returnStdout: true
-                    ).trim()
+                    container('jnlp') {
+                        TAG_VERSION = sh(
+                                script: "echo ${TAG_NAME} | tr -d '\\n' | egrep '^v[\\.0-9]*.*\$' | sed 's/v//'",
+                                returnStdout: true
+                        ).trim()
 
-                    sh "curl -v -H \"Authorization: token ${GIT_TOKEN}\" https://api.github.com/repos/gkirok/tsdb-nuclio/releases/tags/v${TAG_VERSION} > tag_version"
-                    AUTO_TAG = sh(
-                            script: "cat tag_version | grep Autorelease",
-                            returnStdout: true
-                    ).trim()
+                        sh "curl -v -H \"Authorization: token ${GIT_TOKEN}\" https://api.github.com/repos/gkirok/tsdb-nuclio/releases/tags/v${TAG_VERSION} > ~/tag_version"
+                        AUTO_TAG = sh(
+                                script: "cat ~/tag_version",
+                                returnStdout: true
+                        ).trim()
+                    }
                 }
 
-                if ( TAG_VERSION && AUTO_TAG ) {
+                echo "$TAG_VERSION"
+                echo "$AUTO_TAG"
+
+                if ( TAG_VERSION && !AUTO_TAG.startsWith("Autorelease") ) {
 //                    def V3IO_TSDB_VERSION = sh(
 //                            script: "echo ${TAG_VERSION} | awk -F '-v' '{print \"v\"\$2}'",
 //                            returnStdout: true
@@ -36,7 +42,6 @@ podTemplate(label: "tsdb-nuclio-${label}", inheritFrom: 'kube-slave-dood') {
                     stage('prepare sources') {
                         container('jnlp') {
                             sh """
-                                mkdir ${BUILD_FOLDER}
                                 cd ${BUILD_FOLDER}
                                 git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/${github_user}/tsdb-nuclio.git src/github.com/v3io/tsdb-nuclio
                                 cd ${BUILD_FOLDER}/src/github.com/v3io/tsdb-nuclio
