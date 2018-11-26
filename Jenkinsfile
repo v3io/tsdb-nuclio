@@ -5,7 +5,56 @@ def docker_user = "gallziguazio"
 
 
 properties([pipelineTriggers([[$class: 'PeriodicFolderTrigger', interval: '2m']])])
-podTemplate(label: "tsdb-nuclio-${label}", inheritFrom: 'kube-slave-dood') {
+//podTemplate(label: "tsdb-nuclio-${label}", inheritFrom: 'kube-slave-dood') {
+podTemplate(label: "tsdb-nuclio-${label}", yaml: """
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "tsdb-nuclio-${label}"
+  labels:
+    jenkins/kube-default: "true"
+    app: "jenkins"
+    component: "agent"
+spec:
+  shareProcessNamespace: true
+  replicas: 3
+  containers:
+    - name: jnlp
+      image: jenkinsci/jnlp-slave
+      resources:
+        limits:
+          cpu: 1
+          memory: 2Gi
+        requests:
+          cpu: 1
+          memory: 2Gi
+      env:
+      - name: POD_IP
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: DOCKER_HOST
+        value: tcp://localhost:2375
+      volumeMounts:
+        - name: go-shared
+          mountPath: /go
+    - name: docker-cmd
+      image: docker
+      command: [ "/bin/sh", "-c", "--" ]
+      args: [ "while true; do sleep 30; done;" ]
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run
+        - name: go-shared
+          mountPath: /go
+  volumes:
+    - name: docker-sock
+      hostPath:
+          path: /var/run
+    - name: go-shared
+      emptyDir: {}
+"""
+) {
     node("tsdb-nuclio-${label}") {
         withCredentials([
                 usernamePassword(credentialsId: '4318b7db-a1af-4775-b871-5a35d3e75c21', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME'),
