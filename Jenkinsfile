@@ -66,7 +66,7 @@ spec:
 
                         sh "curl -v -H \"Authorization: token ${GIT_TOKEN}\" https://api.github.com/repos/gkirok/tsdb-nuclio/releases/tags/v${TAG_VERSION} > ~/tag_version"
                         AUTO_TAG = sh(
-                                script: "cat ~/tag_version | python -c 'import json,sys;obj=json.load(sys.stdin);print obj[\"body\"]",
+                                script: "cat ~/tag_version | python -c 'import json,sys;obj=json.load(sys.stdin);print obj[\"body\"]'",
                                 returnStdout: true
                         ).trim()
                     }
