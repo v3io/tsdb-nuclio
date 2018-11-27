@@ -34,7 +34,7 @@ spec:
       command: [ "/bin/sh", "-c", "--" ]
       args: [ "while true; do sleep 30; done;" ]
       volumeMounts:
-        - name: docker-soc7k
+        - name: docker-sock
           mountPath: /var/run
         - name: go-shared
           mountPath: /go
