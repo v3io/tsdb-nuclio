@@ -73,7 +73,7 @@ spec:
                 }
             }
 
-            if ( TAG_VERSION && !AUTO_TAG.startsWith("Autorelease") ) {
+            if ( TAG_VERSION ) {
                 stage('prepare sources') {
                     container('jnlp') {
 //                            V3IO_TSDB_VERSION = sh(
