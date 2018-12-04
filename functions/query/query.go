@@ -12,9 +12,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-go-http"
 	"github.com/v3io/v3io-tsdb/pkg/config"
+	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
-	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 )
 
 // Example request:
@@ -61,8 +61,12 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 		return nil, errors.Wrap(err, "Failed to initialize querier")
 	}
 
-	params := &pquerier.SelectParams{Name: request.Metric, Functions: strings.Join(request.Aggregators, ","),
-		Step: step, Filter: request.FilterExpression, From: from, To: to}
+	params := &pquerier.SelectParams{Name: request.Metric,
+		Functions: strings.Join(request.Aggregators, ","),
+		Step:      step,
+		Filter:    request.FilterExpression,
+		From:      from,
+		To:        to}
 	// Select query to get back a series set iterator
 	seriesSet, err := querier.Select(params)
 	if err != nil {
