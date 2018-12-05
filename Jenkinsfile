@@ -1,10 +1,10 @@
 label = "${UUID.randomUUID().toString()}"
 BUILD_FOLDER = "/go"
-docker_user = "gallziguazio"
+docker_user = "iguaziodocker"
 git_project = "tsdb-nuclio"
-git_project_user = "gkirok"
-git_deploy_user = "iguazio-dev-git-user"
-git_deploy_user_token = "iguazio-dev-git-user-token"
+git_project_user = "v3io"
+git_deploy_user = "iguazio-prod-git-user"
+git_deploy_user_token = "iguazio-prod-git-user-token"
 
 properties([pipelineTriggers([[$class: 'PeriodicFolderTrigger', interval: '2m']])])
 podTemplate(label: "${git_project}-${label}", yaml: """
