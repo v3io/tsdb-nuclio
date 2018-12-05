@@ -1,6 +1,7 @@
 label = "${UUID.randomUUID().toString()}"
 BUILD_FOLDER = "/go"
 docker_user = "iguaziodocker"
+docker_credentials = "iguazio-prod-docker-credentials"
 git_project = "tsdb-nuclio"
 git_project_user = "v3io"
 git_deploy_user = "iguazio-prod-git-user"
@@ -87,15 +88,7 @@ spec:
                         sh """
                             cd ${BUILD_FOLDER}
                             git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/${git_project_user}/${git_project}.git src/github.com/v3io/${git_project}
-                            cd ${BUILD_FOLDER}/src/github.com/v3io/${git_project}
-                            rm -rf functions/ingest/vendor/github.com/v3io/v3io-tsdb functions/query/vendor/github.com/v3io/v3io-tsdb
-                            git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/${git_project_user}/v3io-tsdb.git functions/ingest/vendor/github.com/v3io/v3io-tsdb
-                            cd functions/ingest/vendor/github.com/v3io/v3io-tsdb
-                            rm -rf .git vendor/github.com/v3io vendor/github.com/nuclio
-                            cd ${BUILD_FOLDER}/src/github.com/v3io/${git_project}
-                            cp -R functions/ingest/vendor/github.com/v3io/v3io-tsdb functions/query/vendor/github.com/v3io/v3io-tsdb
                         """
-//                            git checkout ${V3IO_TSDB_VERSION}
                     }
                 }
 
@@ -108,26 +101,14 @@ spec:
                             cd ${BUILD_FOLDER}/src/github.com/v3io/${git_project}/functions/query
                             docker build . --tag tsdb-query:latest --tag ${docker_user}/tsdb-query:${TAG_VERSION}
                         """
-                        withDockerRegistry([credentialsId: "472293cc-61bc-4e9f-aecb-1d8a73827fae", url: ""]) {
-                            sh "docker push ${docker_user}/tsdb-ingest:${TAG_VERSION}"
-                            sh "docker push ${docker_user}/tsdb-query:${TAG_VERSION}"
-                        }
                     }
                 }
 
-                stage('git push') {
-                    container('jnlp') {
-                        try {
-                            sh """
-                                git config --global user.email '${GIT_USERNAME}@iguazio.com'
-                                git config --global user.name '${GIT_USERNAME}'
-                                cd ${BUILD_FOLDER}/src/github.com/v3io/${git_project}
-                                git add *
-                                git commit -am 'Updated TSDB to latest';
-                                git push origin master
-                            """
-                        } catch (err) {
-                            echo "Can not push code to git"
+                stage('push to hub') {
+                    container('docker-cmd') {
+                        withDockerRegistry([credentialsId: docker_credentials, url: ""]) {
+                            sh "docker push ${docker_user}/tsdb-ingest:${TAG_VERSION}"
+                            sh "docker push ${docker_user}/tsdb-query:${TAG_VERSION}"
                         }
                     }
                 }
