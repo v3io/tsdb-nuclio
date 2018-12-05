@@ -47,8 +47,8 @@ spec:
 """
 ) {
     node("${git_project}-${label}") {
-        currentBuild.displayName = "${git_project}"
-        currentBuild.description = "Will not run with tags created before 4 hours and more."
+//        currentBuild.displayName = "${git_project}"
+//        currentBuild.description = "Will not run with tags created before 4 hours and more."
 
         withCredentials([
                 usernamePassword(credentialsId: '4318b7db-a1af-4775-b871-5a35d3e75c21', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME'),
