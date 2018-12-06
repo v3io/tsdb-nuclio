@@ -74,7 +74,7 @@ spec:
                     PUBLISHED_BEFORE = sh(
                             script: "tag_published_at=\$(cat ~/tag_version | python -c 'import json,sys;obj=json.load(sys.stdin);print obj[\"published_at\"]'); SECONDS=\$(expr \$(date +%s) - \$(date -d \"\$tag_published_at\" +%s)); expr \$SECONDS / 60 + 1",
                             returnStdout: true
-                    ).trim()
+                    ).trim().toInteger()
 
                     echo "$AUTO_TAG"
                     echo "$TAG_VERSION"
@@ -82,7 +82,7 @@ spec:
                 }
             }
 
-            if ( TAG_VERSION && PUBLISHED_BEFORE < 240 ) {
+            if ( TAG_VERSION != null && TAG_VERSION.length() > 0 && PUBLISHED_BEFORE < 240 ) {
                 stage('prepare sources') {
                     container('jnlp') {
                         sh """
