@@ -44,8 +44,8 @@ type value struct {
 }
 
 type sample struct {
-	Time  string `json:"t,omitempty"`
-	Value value  `json:"v,omitempty"`
+	Time  string `json:"t"`
+	Value value  `json:"v"`
 }
 
 type request struct {
