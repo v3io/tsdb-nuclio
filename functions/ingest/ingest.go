@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/nuclio/nuclio-sdk-go"
@@ -66,6 +67,10 @@ func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	// parse body
 	if err := json.Unmarshal(event.GetBody(), &request); err != nil {
 		return "", nuclio.WrapErrBadRequest(err)
+	}
+
+	if strings.TrimSpace(request.Metric) == "" {
+		return nil, nuclio.WrapErrBadRequest(errors.New(`request is missing the mandatory 'metric' field`))
 	}
 
 	// convert the map[string]string -> []Labels
