@@ -57,7 +57,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	}
 
 	// Create TSDB Querier
-	querier, err := adapter.QuerierV2(nil)
+	querier, err := adapter.QuerierV2()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initialize querier")
 	}
