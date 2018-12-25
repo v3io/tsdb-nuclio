@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/nuclio/nuclio-sdk-go"
@@ -43,8 +44,8 @@ type value struct {
 }
 
 type sample struct {
-	Time  string `json:"t,omitempty"`
-	Value value  `json:"v,omitempty"`
+	Time  string `json:"t"`
+	Value value  `json:"v"`
 }
 
 type request struct {
@@ -66,6 +67,10 @@ func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	// parse body
 	if err := json.Unmarshal(event.GetBody(), &request); err != nil {
 		return "", nuclio.WrapErrBadRequest(err)
+	}
+
+	if strings.TrimSpace(request.Metric) == "" {
+		return nil, nuclio.WrapErrBadRequest(errors.New(`request is missing the mandatory 'metric' field`))
 	}
 
 	// convert the map[string]string -> []Labels
