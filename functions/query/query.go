@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/v3io/v3io-tsdb/pkg/formatter"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -117,8 +118,29 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 			return err
 		}
 
+		v3ioUrl := os.Getenv("V3IO_URL")
+		numWorkers, err := strconv.Atoi(os.Getenv("V3IO_NUM_WORKERS"))
+		if err != nil {
+			return err
+		}
+		ctx, err := v3io.NewContext(context.Logger, v3ioUrl, numWorkers)
+		if err != nil {
+			return err
+		}
+		session, err := ctx.NewSession(os.Getenv("V3IO_USERNAME"), os.Getenv("V3IO_PASSWORD"), "")
+		if err != nil {
+			return err
+		}
+		containerName := os.Getenv("V3IO_CONTAINER")
+		if containerName == "" {
+			containerName = "bigdata"
+		}
+		container, err := session.NewContainer(containerName)
+		if err != nil {
+			return err
+		}
 		// create adapter once for all contexts
-		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, context.DataBinding["db0"].(*v3io.Container), context.Logger)
+		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
 			return err
 		}
