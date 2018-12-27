@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
-	"github.com/v3io/v3io-go-http"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
@@ -164,13 +164,32 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{
 			TablePath: path,
 		})
-
 		if err != nil {
 			return nil, err
 		}
-
+		v3ioUrl := os.Getenv("V3IO_URL")
+		numWorkersStr := os.Getenv("V3IO_NUM_WORKERS")
+		var numWorkers int
+		if len(numWorkersStr) > 0 {
+			numWorkers, err = strconv.Atoi(numWorkersStr)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			numWorkers = 8
+		}
+		username := os.Getenv("V3IO_USERNAME")
+		password := os.Getenv("V3IO_PASSWORD")
+		containerName := os.Getenv("V3IO_CONTAINER")
+		if containerName == "" {
+			containerName = "bigdata"
+		}
+		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
+		if err != nil {
+			return nil, err
+		}
 		// create adapter once for all contexts
-		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, context.DataBinding["db0"].(*v3io.Container), context.Logger)
+		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
 			return nil, err
 		}
