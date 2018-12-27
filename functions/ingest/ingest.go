@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -166,11 +167,28 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 		if err != nil {
 			return nil, err
 		}
-		// create adapter once for all contexts
-		container, err := tsdb.NewContainerFromEnv(context.Logger)
+		v3ioUrl := os.Getenv("V3IO_URL")
+		numWorkersStr := os.Getenv("V3IO_NUM_WORKERS")
+		var numWorkers int
+		if len(numWorkersStr) > 0 {
+			numWorkers, err = strconv.Atoi(numWorkersStr)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			numWorkers = 8
+		}
+		username := os.Getenv("V3IO_USERNAME")
+		password := os.Getenv("V3IO_PASSWORD")
+		containerName := os.Getenv("V3IO_CONTAINER")
+		if containerName == "" {
+			containerName = "bigdata"
+		}
+		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
 		if err != nil {
 			return nil, err
 		}
+		// create adapter once for all contexts
 		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
 			return nil, err

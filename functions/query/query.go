@@ -11,7 +11,6 @@ import (
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
-	"github.com/v3io/v3io-go-http"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
@@ -113,29 +112,27 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{
 			TablePath: path,
 		})
-
 		if err != nil {
 			return err
 		}
-
 		v3ioUrl := os.Getenv("V3IO_URL")
-		numWorkers, err := strconv.Atoi(os.Getenv("V3IO_NUM_WORKERS"))
-		if err != nil {
-			return err
+		numWorkersStr := os.Getenv("V3IO_NUM_WORKERS")
+		var numWorkers int
+		if len(numWorkersStr) > 0 {
+			numWorkers, err = strconv.Atoi(numWorkersStr)
+			if err != nil {
+				return err
+			}
+		} else {
+			numWorkers = 8
 		}
-		ctx, err := v3io.NewContext(context.Logger, v3ioUrl, numWorkers)
-		if err != nil {
-			return err
-		}
-		session, err := ctx.NewSession(os.Getenv("V3IO_USERNAME"), os.Getenv("V3IO_PASSWORD"), "")
-		if err != nil {
-			return err
-		}
+		username := os.Getenv("V3IO_USERNAME")
+		password := os.Getenv("V3IO_PASSWORD")
 		containerName := os.Getenv("V3IO_CONTAINER")
 		if containerName == "" {
 			containerName = "bigdata"
 		}
-		container, err := session.NewContainer(containerName)
+		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
 		if err != nil {
 			return err
 		}
