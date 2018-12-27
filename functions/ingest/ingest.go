@@ -61,7 +61,7 @@ type userData struct {
 var adapter *tsdb.V3ioAdapter
 var adapterLock sync.Mutex
 
-func Handler(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
+func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	var request request
 
 	// parse body
