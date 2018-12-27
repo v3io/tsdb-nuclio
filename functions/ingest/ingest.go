@@ -9,10 +9,9 @@ import (
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
-	//"github.com/v3io/v3io-go-http"
-	"github.com/gtopper/v3io-tsdb/pkg/tsdb"
-	"github.com/gtopper/v3io-tsdb/pkg/utils"
 	"github.com/v3io/v3io-tsdb/pkg/config"
+	"github.com/v3io/v3io-tsdb/pkg/tsdb"
+	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
 
 // Example event:
