@@ -46,6 +46,7 @@ type queryCommandeer struct {
 	step           string
 	output         string
 	oldQuerier     bool
+	groupBy        string
 }
 
 func newQueryCommandeer(rootCommandeer *RootCommandeer) *queryCommandeer {
@@ -55,7 +56,7 @@ func newQueryCommandeer(rootCommandeer *RootCommandeer) *queryCommandeer {
 
 	cmd := &cobra.Command{
 		Aliases: []string{"get"},
-		Use:     "query [<metric>] [flags]",
+		Use:     "query [<metrics>] [flags]",
 		Short:   "Query a TSDB instance",
 		Long:    `Query a TSDB instance (table).`,
 		Example: `The examples assume that the endpoint of the web-gateway service, the login credentials, and
@@ -63,19 +64,20 @@ the name of the data container are configured in the default configuration file 
 instead of using the -s|--server, -u|--username, -p|--password, and -c|--container flags.
 - tsdbctl query temperature -t mytsdb
 - tsdbctl query -t performance -f "starts(__name__, 'cpu') AND os=='win'"
-- tsdbctl query metric2 -t pmetrics -b 0 -e now-1h -a "sum,avg" -i 20m
+- tsdbctl query metric2,metric3,metric4 -t pmetrics -b 0 -e now-1h -a "sum,avg" -i 20m
 - tsdbctl query -t mytsdb -f "LabelA==8.1" -l 1d -o json
-- tsdbctl query noise -t my_tsdb -w "1,7,14" -i "1d" -a "count,sum,avg"
+- tsdbctl query metric1 -t my_tsdb -l 1d -a "count,sum,avg" --groupBy LabelA,LabelB
+- tsdbctl query metric1 -t my_tsdb -l 1d -a "count_all,sum_all"
 
 Notes:
-- You must set the metric-name argument (<metric>) and/or the query-filter flag (-f|--filter).
-- Queries that set the metric-name argument (<metric>) use range scan and are therefore faster.
-  But you can't use such queries to scan multiple metrics.
+- You must set the metric-name argument (<metrics>) and/or the query-filter flag (-f|--filter).
+- Queries that set the metric-name argument (<metrics>) use range scan and are therefore faster.
 - To query the full TSDB content, set the -f|--filter to a query filter that always evaluates
-  to true (such as "1==1"), don't set the <metric> argument, and set the -b|--begin flag to 0.
+  to true (such as "1==1"), don't set the <metrics> argument, and set the -b|--begin flag to 0.
+- You can use either over-time aggregates or cross series (*_all) aggregates, but not both in the same query.
 
 Arguments:
-  <metric> (string) The name of a metric to query. If you don't set this argument, you must
+  <metrics> (string) Comma-separated list of metric names to query. If you don't set this argument, you must
                     provide a query filter using the -f|--filter flag.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -85,7 +87,6 @@ Arguments:
 			}
 
 			return commandeer.query()
-
 		},
 	}
 
@@ -107,11 +108,14 @@ Arguments:
 	// any other aggregate). However, it was decided that documenting this
 	// would over complicate the documentation.
 	cmd.Flags().StringVarP(&commandeer.functions, "aggregates", "a", "",
-		"Aggregation information to return, as a comma-separated\nlist of supported aggregation functions - count | avg |\nsum | min | max | stddev | stdvar | last | rate.\nExample: \"sum,min,max,count\".")
+		"Aggregation information to return, as a comma-separated\nlist of supported aggregation functions - count | avg |\nsum | min | max | stddev | stdvar | last | rate.\nFor cross series aggregations add an \"_all\" suffix for the wanted aggregate.\nNote: you can query either over time aggregates or cross series aggregate but not both in the same query.\nExample: \"sum,min,max,count\", \"sum_all,avg_all\".")
 	cmd.Flags().StringVarP(&commandeer.step, "aggregation-interval", "i", "",
 		"Aggregation interval for applying the aggregation functions\n(if set - see the -a|--aggregates flag), of the format\n\"[0-9]+[mhd]\" (where 'm' = minutes, 'h' = hours, and\n'd' = days). Examples: \"1h\"; \"150m\". (default =\n<end time> - <start time>)")
+	cmd.Flags().StringVar(&commandeer.groupBy, "groupBy", "",
+		"Comma separated list of labels to group the result by")
 	cmd.Flags().BoolVarP(&commandeer.oldQuerier, "oldQuerier", "q", false, "use old querier")
 	cmd.Flags().Lookup("oldQuerier").Hidden = true
+	cmd.Flags().Lookup("windows").Hidden = true // hidden, because only supported in old querier.
 	commandeer.cmd = cmd
 
 	return commandeer
@@ -120,7 +124,7 @@ Arguments:
 func (qc *queryCommandeer) query() error {
 
 	if qc.name == "" && qc.filter == "" {
-		return errors.New("The query command must receive either a metric-name paramter (<metric>) or a query filter (set via the -f|--filter flag).")
+		return errors.New("The query command must receive either a metric-name paramter (<metrics>) or a query filter (set via the -f|--filter flag).")
 	}
 
 	if qc.last != "" && (qc.from != "" || qc.to != "") {
@@ -167,7 +171,7 @@ func (qc *queryCommandeer) query() error {
 	}
 
 	qc.rootCommandeer.logger.DebugWith("Query", "from", from, "to", to, "name", qc.name,
-		"filter", qc.filter, "functions", qc.functions, "step", qc.step)
+		"filter", qc.filter, "functions", qc.functions, "step", qc.step, "groupBy", qc.groupBy)
 
 	if !qc.oldQuerier {
 		return qc.newQuery(from, to, step)
@@ -177,13 +181,13 @@ func (qc *queryCommandeer) query() error {
 }
 
 func (qc *queryCommandeer) newQuery(from, to, step int64) error {
-	qry, err := qc.rootCommandeer.adapter.QuerierV2(nil)
+	qry, err := qc.rootCommandeer.adapter.QuerierV2()
 	if err != nil {
 		return errors.Wrap(err, "Failed to initialize the Querier object.")
 	}
 
 	selectParams := &pquerier.SelectParams{Name: qc.name, Functions: qc.functions,
-		Step: step, Filter: qc.filter, From: from, To: to}
+		Step: step, Filter: qc.filter, From: from, To: to, GroupBy: qc.groupBy}
 	set, err := qry.Select(selectParams)
 
 	if err != nil {

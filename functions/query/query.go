@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"github.com/v3io/v3io-tsdb/pkg/formatter"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
-	"github.com/v3io/v3io-go-http"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
@@ -56,7 +56,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	}
 
 	// Create TSDB Querier
-	querier, err := adapter.QuerierV2(nil)
+	querier, err := adapter.QuerierV2()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initialize querier")
 	}
@@ -112,13 +112,32 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{
 			TablePath: path,
 		})
-
 		if err != nil {
 			return err
 		}
-
+		v3ioUrl := os.Getenv("V3IO_URL")
+		numWorkersStr := os.Getenv("V3IO_NUM_WORKERS")
+		var numWorkers int
+		if len(numWorkersStr) > 0 {
+			numWorkers, err = strconv.Atoi(numWorkersStr)
+			if err != nil {
+				return err
+			}
+		} else {
+			numWorkers = 8
+		}
+		username := os.Getenv("V3IO_USERNAME")
+		password := os.Getenv("V3IO_PASSWORD")
+		containerName := os.Getenv("V3IO_CONTAINER")
+		if containerName == "" {
+			containerName = "bigdata"
+		}
+		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
+		if err != nil {
+			return err
+		}
 		// create adapter once for all contexts
-		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, context.DataBinding["db0"].(*v3io.Container), context.Logger)
+		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
 			return err
 		}
