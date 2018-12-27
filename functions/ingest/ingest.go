@@ -4,16 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
-	"github.com/v3io/v3io-go-http"
+	//"github.com/v3io/v3io-go-http"
+	"github.com/gtopper/v3io-tsdb/pkg/tsdb"
+	"github.com/gtopper/v3io-tsdb/pkg/utils"
 	"github.com/v3io/v3io-tsdb/pkg/config"
-	"github.com/v3io/v3io-tsdb/pkg/tsdb"
-	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
 
 // Example event:
@@ -62,7 +61,7 @@ type userData struct {
 var adapter *tsdb.V3ioAdapter
 var adapterLock sync.Mutex
 
-func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
+func Handler(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	var request request
 
 	// parse body
@@ -165,33 +164,14 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{
 			TablePath: path,
 		})
-
-		if err != nil {
-			return nil, err
-		}
-
-		v3ioUrl := os.Getenv("V3IO_URL")
-		numWorkers, err := strconv.Atoi(os.Getenv("V3IO_NUM_WORKERS"))
-		if err != nil {
-			return nil, err
-		}
-		ctx, err := v3io.NewContext(context.Logger, v3ioUrl, numWorkers)
-		if err != nil {
-			return nil, err
-		}
-		session, err := ctx.NewSession(os.Getenv("V3IO_USERNAME"), os.Getenv("V3IO_PASSWORD"), "")
-		if err != nil {
-			return nil, err
-		}
-		containerName := os.Getenv("V3IO_CONTAINER")
-		if containerName == "" {
-			containerName = "bigdata"
-		}
-		container, err := session.NewContainer(containerName)
 		if err != nil {
 			return nil, err
 		}
 		// create adapter once for all contexts
+		container, err := tsdb.NewContainerFromEnv(context.Logger)
+		if err != nil {
+			return nil, err
+		}
 		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
 			return nil, err
