@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/v3io/tsdb-nuclio/functions/ingest/format"
+	"github.com/nuclio/handler/format"
 	"os"
 	"strconv"
 	"sync"
