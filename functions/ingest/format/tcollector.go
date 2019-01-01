@@ -31,7 +31,7 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 
 	// parse body
 	if err := json.Unmarshal(body, &tinfos); err != nil {
-		return nuclio.WrapErrBadRequest(err)
+		return errors.Wrapf(err, "Failed to parse request: %s", body)
 	}
 
 	for _, tinfo := range tinfos {
@@ -50,7 +50,7 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 
 		_, err := tsdbAppender.Add(labels, sampleTime, sampleValue)
 		if err != nil {
-			return errors.Wrap(err, "Failed to add sample")
+			return errors.Wrapf(err, "Failed to add samples. Request body is: %s", body)
 		}
 
 	}

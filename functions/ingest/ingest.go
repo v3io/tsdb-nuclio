@@ -25,7 +25,10 @@ func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	// get user data from context, as initialized by InitContext
 	userData := context.UserData.(*UserData)
 
-	return nil, userData.ingester.Ingest(userData.TsdbAppender, event)
+	if err := userData.ingester.Ingest(userData.TsdbAppender, event); err != nil {
+		return nil, nuclio.WrapErrBadRequest(err)
+	}
+	return nil, nil
 }
 
 // InitContext runs only once when the function runtime starts

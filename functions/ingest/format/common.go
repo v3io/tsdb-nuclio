@@ -5,16 +5,17 @@ import (
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
 	"sort"
+	"strings"
 )
 
-const TCOLLECTOR_FORMAT string = "TCOLLECTOR"
+const tcollector string = "tcollector"
 
 type Ingester interface {
 	Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) error
 }
 
 func IngesterForName(formatName string) Ingester {
-	if formatName == TCOLLECTOR_FORMAT {
+	if strings.ToLower(formatName) == tcollector {
 		return tcollectorFormat{}
 	} else {
 		return defaultTsdb{}
