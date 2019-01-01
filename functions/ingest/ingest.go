@@ -1,112 +1,44 @@
 package main
 
 import (
-	"encoding/json"
+	"github.com/nuclio/handler/format"
 	"os"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
-	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
 
-// Example event:
-//
-// {
-//		"metric": "cpu",
-//		"labels": {
-//			"dc": "7",
-//			"hostname": "mybesthost"
-//		},
-//		"samples": [
-//			{
-//				"t": "1532595945142",
-//				"v": {
-//					"N": 95.2
-//				}
-//			},
-//			{
-//				"t": "1532595948517",
-//				"v": {
-//					"n": 86.8
-//				}
-//			}
-//		]
-// }
-
-type value struct {
-	N float64 `json:"n,omitempty"`
-}
-
-type sample struct {
-	Time  string `json:"t"`
-	Value value  `json:"v"`
-}
-
-type request struct {
-	Metric  string            `json:"metric"`
-	Labels  map[string]string `json:"labels,omitempty"`
-	Samples []sample          `json:"samples"`
-}
-
-type userData struct {
-	tsdbAppender tsdb.Appender
+type UserData struct {
+	TsdbAppender tsdb.Appender
+	ingester     format.Ingester
 }
 
 var adapter *tsdb.V3ioAdapter
 var adapterLock sync.Mutex
 
 func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
-	var request request
-
-	// parse body
-	if err := json.Unmarshal(event.GetBody(), &request); err != nil {
-		return "", nuclio.WrapErrBadRequest(err)
-	}
-
-	if strings.TrimSpace(request.Metric) == "" {
-		return nil, nuclio.WrapErrBadRequest(errors.New(`request is missing the mandatory 'metric' field`))
-	}
-
-	// convert the map[string]string -> []Labels
-	labels := getLabelsFromRequest(request.Metric, request.Labels)
 
 	// get user data from context, as initialized by InitContext
-	userData := context.UserData.(*userData)
+	userData := context.UserData.(*UserData)
 
-	// iterate over request samples
-	for _, sample := range request.Samples {
-
-		// if time is not specified assume "now"
-		if sample.Time == "" {
-			sample.Time = "now"
-		}
-
-		// convert time string to time int, string can be: now, now-2h, int (unix milisec time), or RFC3339 date string
-		sampleTime, err := utils.Str2unixTime(sample.Time)
-		if err != nil {
-			return "", errors.Wrap(err, "Failed to parse time: "+sample.Time)
-		}
-
-		// append sample to metric
-		_, err = userData.tsdbAppender.Add(labels, sampleTime, sample.Value.N)
-		if err != nil {
-			return "", errors.Wrap(err, "Failed to add sample")
-		}
+	if err := userData.ingester.Ingest(userData.TsdbAppender, event); err != nil {
+		return nil, nuclio.WrapErrBadRequest(err)
 	}
-
-	return "", nil
+	return nil, nil
 }
 
 // InitContext runs only once when the function runtime starts
 func InitContext(context *nuclio.Context) error {
 	var err error
-	var userData userData
+	var userData UserData
+
+	// get input format
+	formatName := os.Getenv("INPUT_FORMAT")
+	userData.ingester = format.IngesterForName(formatName)
 
 	// get configuration from env
 	tsdbAppenderPath := os.Getenv("INGEST_V3IO_TSDB_PATH")
@@ -117,7 +49,7 @@ func InitContext(context *nuclio.Context) error {
 	context.Logger.InfoWith("Initializing", "tsdbAppenderPath", tsdbAppenderPath)
 
 	// create TSDB appender
-	userData.tsdbAppender, err = createTSDBAppender(context, tsdbAppenderPath)
+	userData.TsdbAppender, err = createTSDBAppender(context, tsdbAppenderPath)
 	if err != nil {
 		return err
 	}
@@ -126,30 +58,6 @@ func InitContext(context *nuclio.Context) error {
 	context.UserData = &userData
 
 	return nil
-}
-
-// convert map[string]string -> utils.Labels
-func getLabelsFromRequest(metricName string, labelsFromRequest map[string]string) utils.Labels {
-
-	// adding 1 for metric name
-	labels := make(utils.Labels, 0, len(labelsFromRequest)+1)
-
-	// add the metric name
-	labels = append(labels, utils.Label{
-		Name:  "__name__",
-		Value: metricName,
-	})
-
-	for labelKey, labelValue := range labelsFromRequest {
-		labels = append(labels, utils.Label{
-			Name:  labelKey,
-			Value: labelValue,
-		})
-	}
-
-	sort.Sort(labels)
-
-	return labels
 }
 
 func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, error) {
