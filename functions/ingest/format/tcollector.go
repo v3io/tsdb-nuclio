@@ -43,7 +43,7 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 		sampleTime := tinfo.Timestamp * 1000
 		sampleValue := tinfo.Value
 
-		tagMap := make(map[string]string, 1000)
+		tagMap := make(map[string]string, len(tinfo.Tags))
 		for k, v := range tinfo.Tags {
 			tagMap[k] = v
 		}
