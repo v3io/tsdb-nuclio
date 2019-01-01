@@ -2,6 +2,7 @@ package format
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
@@ -34,6 +35,7 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 		return errors.Wrapf(err, "Failed to parse request: %s", body)
 	}
 
+	var errBuilder strings.Builder
 	for _, tinfo := range tinfos {
 
 		metric := strings.Replace(tinfo.Metric, ".", "_", -1)
@@ -50,9 +52,11 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 
 		_, err := tsdbAppender.Add(labels, sampleTime, sampleValue)
 		if err != nil {
-			return errors.Wrapf(err, "Failed to add samples. Request body is: %s", body)
+			errBuilder.WriteString(fmt.Sprintf("Failed to add samples for metric %s and labels %+v:\n ", tinfo.Metric, labels))
+			errBuilder.WriteString(err.Error())
+			errBuilder.WriteString("\n*********************************************************************\n")
 		}
 
 	}
-	return nil
+	return errors.New(errBuilder.String())
 }
