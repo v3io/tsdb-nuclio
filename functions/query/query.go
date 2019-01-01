@@ -3,29 +3,26 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/nuclio/nuclio-sdk-go"
+	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/formatter"
+	"github.com/v3io/v3io-tsdb/pkg/pquerier"
+	"github.com/v3io/v3io-tsdb/pkg/tsdb"
+	"github.com/v3io/v3io-tsdb/pkg/utils"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/nuclio/nuclio-sdk-go"
-	"github.com/pkg/errors"
-	"github.com/v3io/v3io-tsdb/pkg/config"
-	"github.com/v3io/v3io-tsdb/pkg/pquerier"
-	"github.com/v3io/v3io-tsdb/pkg/tsdb"
-	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
 
-// Example request:
-//
-// {
-//     "metric": "cpu",
-//     "step": "1m",
-//     "start_time": "1532095945142",
-//     "end_time": "1642995948517"
-// }
-
+/* Example request:
+{
+	"metric": "cpu",
+	"step": "1m",
+	"start_time": "1532095945142",
+	"end_time": "1642995948517"
+}
+*/
 type request struct {
 	Metric           string   `json:"metric"`
 	Aggregators      []string `json:"aggregators"`

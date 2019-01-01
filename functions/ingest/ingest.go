@@ -10,12 +10,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
-
 )
 
 type UserData struct {
 	TsdbAppender tsdb.Appender
-	format format.InputFormat
+	ingester     format.Ingester
 }
 
 var adapter *tsdb.V3ioAdapter
@@ -26,7 +25,7 @@ func Ingest(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	// get user data from context, as initialized by InitContext
 	userData := context.UserData.(*UserData)
 
-	return userData.format.Ingest(userData.TsdbAppender, event)
+	return nil, userData.ingester.Ingest(userData.TsdbAppender, event)
 }
 
 // InitContext runs only once when the function runtime starts
@@ -36,7 +35,7 @@ func InitContext(context *nuclio.Context) error {
 
 	// get input format
 	formatName := os.Getenv("INPUT_FORMAT")
-	userData.format = format.InputFormatForName(formatName)
+	userData.ingester = format.IngesterForName(formatName)
 
 	// get configuration from env
 	tsdbAppenderPath := os.Getenv("INGEST_V3IO_TSDB_PATH")

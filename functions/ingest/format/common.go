@@ -7,14 +7,13 @@ import (
 	"sort"
 )
 
-var DEFAULT_FORMAT string = "DEFAULT"
-var TCOLLECTOR_FORMAT string = "TCOLLECTOR"
+const TCOLLECTOR_FORMAT string = "TCOLLECTOR"
 
-type InputFormat interface  {
-	Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) (interface{}, error)
+type Ingester interface {
+	Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) error
 }
 
-func InputFormatForName(formatName string) InputFormat {
+func IngesterForName(formatName string) Ingester {
 	if formatName == TCOLLECTOR_FORMAT {
 		return tcollectorFormat{}
 	} else {
@@ -26,7 +25,7 @@ func InputFormatForName(formatName string) InputFormat {
 func getLabelsFromRequest(metricName string, labelsFromRequest map[string]string) utils.Labels {
 
 	// adding 1 for metric name
-	labels := make(utils.Labels, 0, len(labelsFromRequest)+1)
+	labels := make(utils.Labels, len(labelsFromRequest)+1)
 
 	// add the metric name
 	labels = append(labels, utils.Label{
@@ -45,4 +44,3 @@ func getLabelsFromRequest(metricName string, labelsFromRequest map[string]string
 
 	return labels
 }
-

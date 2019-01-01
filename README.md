@@ -81,7 +81,7 @@ Where:
 - `TSDB_CONTAINER_PASSWORD`: The Iguazio container password
 - `TSDB_TABLE_PATH`: The TSDB table name (e.g., `mytsdb`)
 - `NUCLIO_NAMESPACE`: The namespace to which the function will be deployed
-- `INPUT_FORMAT`: The input format that this ingest function should expect. Valid options are `DEFAULT` or `TCOLLECTOR`. if this variable will not be set the function will assume `DEFAULT`
+- `INPUT_FORMAT`: The input format that this ingest function should expect. Valid options are `DEFAULT` or `TCOLLECTOR`. If this variable will not be set the function will assume `DEFAULT`
 
 `nuctl` will report to which NodePort the function was bound to (31848 in this case):
 ```sh
