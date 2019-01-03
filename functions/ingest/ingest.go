@@ -74,11 +74,11 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 			return nil, errors.Wrap(err, "Failed to load v3io config")
 		}
 
-		v3ioUrl := os.Getenv("QUERY_V3IO_URL")
-		username := os.Getenv("QUERY_V3IO_USERNAME")
-		password := os.Getenv("QUERY_V3IO_PASSWORD")
-		containerName := os.Getenv("QUERY_V3IO_CONTAINER")
-		numWorkers, err := toNumber(os.Getenv("QUERY_V3IO_NUM_WORKERS"), 8)
+		v3ioUrl := os.Getenv("INGEST_V3IO_URL")
+		username := os.Getenv("INGEST_V3IO_USERNAME")
+		password := os.Getenv("INGEST_V3IO_PASSWORD")
+		containerName := os.Getenv("INGEST_V3IO_CONTAINER")
+		numWorkers, err := toNumber(os.Getenv("INGEST_V3IO_NUM_WORKERS"), 8)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to get number of workers")
 		}
