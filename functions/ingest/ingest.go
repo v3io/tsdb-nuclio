@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/nuclio/handler/format"
 	"os"
 	"strconv"
 	"sync"
 
+	"github.com/nuclio/handler/format"
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/config"
@@ -69,44 +69,48 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 	if adapter == nil {
 		var err error
 
-		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{
-			TablePath: path,
-		})
+		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{TablePath: path})
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "Failed to load v3io config")
 		}
-		v3ioUrl := os.Getenv("V3IO_URL")
-		numWorkersStr := os.Getenv("V3IO_NUM_WORKERS")
-		var numWorkers int
-		if len(numWorkersStr) > 0 {
-			numWorkers, err = strconv.Atoi(numWorkersStr)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			numWorkers = 8
+
+		v3ioUrl := os.Getenv("QUERY_V3IO_URL")
+		username := os.Getenv("QUERY_V3IO_USERNAME")
+		password := os.Getenv("QUERY_V3IO_PASSWORD")
+		containerName := os.Getenv("QUERY_V3IO_CONTAINER")
+		numWorkers, err := toNumber(os.Getenv("QUERY_V3IO_NUM_WORKERS"), 8)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to get number of workers")
 		}
-		username := os.Getenv("V3IO_USERNAME")
-		password := os.Getenv("V3IO_PASSWORD")
-		containerName := os.Getenv("V3IO_CONTAINER")
+
 		if containerName == "" {
 			containerName = "bigdata"
 		}
+
 		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "Failed to create container")
 		}
+
 		// create adapter once for all contexts
 		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "Failed to v3io adapter")
 		}
 	}
 
 	tsdbAppender, err := adapter.Appender()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Failed to create appender")
 	}
 
 	return tsdbAppender, nil
+}
+
+func toNumber(input string, defaultValue int) (int, error) {
+	if input == "" {
+		return defaultValue, nil
+	}
+
+	return strconv.Atoi(input)
 }

@@ -3,6 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/config"
@@ -10,10 +15,6 @@ import (
 	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
-	"os"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 /* Example request:
@@ -59,12 +60,15 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 		return nil, errors.Wrap(err, "Failed to initialize querier")
 	}
 
-	params := &pquerier.SelectParams{Name: request.Metric,
+	params := &pquerier.SelectParams{
+		Name: request.Metric,
 		Functions: strings.Join(request.Aggregators, ","),
 		Step:      step,
 		Filter:    request.FilterExpression,
 		From:      from,
-		To:        to}
+		To:        to,
+	}
+
 	// Select query to get back a series set iterator
 	seriesSet, err := querier.Select(params)
 	if err != nil {
@@ -107,40 +111,44 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 	if adapter == nil {
 		var err error
 
-		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{
-			TablePath: path,
-		})
+		v3ioConfig, err := config.GetOrLoadFromStruct(&config.V3ioConfig{TablePath: path})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Failed to load v3io config")
 		}
-		v3ioUrl := os.Getenv("V3IO_URL")
-		numWorkersStr := os.Getenv("V3IO_NUM_WORKERS")
-		var numWorkers int
-		if len(numWorkersStr) > 0 {
-			numWorkers, err = strconv.Atoi(numWorkersStr)
-			if err != nil {
-				return err
-			}
-		} else {
-			numWorkers = 8
+
+		v3ioUrl := os.Getenv("QUERY_V3IO_URL")
+		username := os.Getenv("QUERY_V3IO_USERNAME")
+		password := os.Getenv("QUERY_V3IO_PASSWORD")
+		containerName := os.Getenv("QUERY_V3IO_CONTAINER")
+		numWorkers, err := toNumber(os.Getenv("QUERY_V3IO_NUM_WORKERS"), 8)
+		if err != nil {
+			return errors.Wrap(err, "Failed to get number of workers")
 		}
-		username := os.Getenv("V3IO_USERNAME")
-		password := os.Getenv("V3IO_PASSWORD")
-		containerName := os.Getenv("V3IO_CONTAINER")
+
 		if containerName == "" {
 			containerName = "bigdata"
 		}
+
 		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Failed to create container")
 		}
+
 		// create adapter once for all contexts
 		adapter, err = tsdb.NewV3ioAdapter(v3ioConfig, container, context.Logger)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Failed to v3io adapter")
 		}
 	}
 
 	// adapter already exists, use it
 	return nil
+}
+
+func toNumber(input string, defaultValue int) (int, error) {
+	if input == "" {
+		return defaultValue, nil
+	}
+
+	return strconv.Atoi(input)
 }
