@@ -90,7 +90,7 @@ spec:
                                 }
 
                                 container('docker-cmd') {
-                                    dockerx.images_push_multi_registries(["iguazio/tsdb-ingest:${DOCKER_TAG_VERSION}"], multi_credentials)
+                                    dockerx.images_push_multi_registries(["tsdb-ingest:${DOCKER_TAG_VERSION}"], multi_credentials)
                                 }
                             },
 
@@ -102,7 +102,7 @@ spec:
                                 }
 
                                 container('docker-cmd') {
-                                    dockerx.images_push_multi_registries(["iguazio/tsdb-query:${DOCKER_TAG_VERSION}"], multi_credentials)
+                                    dockerx.images_push_multi_registries(["tsdb-query:${DOCKER_TAG_VERSION}"], multi_credentials)
                                 }
                             }
                     )
