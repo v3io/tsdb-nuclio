@@ -75,6 +75,7 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 		}
 
 		v3ioUrl := os.Getenv("INGEST_V3IO_URL")
+		accessKey := os.Getenv("INGEST_V3IO_ACCESS_KEY")
 		username := os.Getenv("INGEST_V3IO_USERNAME")
 		password := os.Getenv("INGEST_V3IO_PASSWORD")
 		containerName := os.Getenv("INGEST_V3IO_CONTAINER")
@@ -87,7 +88,7 @@ func createTSDBAppender(context *nuclio.Context, path string) (tsdb.Appender, er
 			containerName = "bigdata"
 		}
 
-		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
+		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, accessKey, username, password, containerName, context.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to create container")
 		}

@@ -61,7 +61,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	}
 
 	params := &pquerier.SelectParams{
-		Name: request.Metric,
+		Name:      request.Metric,
 		Functions: strings.Join(request.Aggregators, ","),
 		Step:      step,
 		Filter:    request.FilterExpression,
@@ -117,6 +117,7 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 		}
 
 		v3ioUrl := os.Getenv("QUERY_V3IO_URL")
+		accessKey := os.Getenv("QUERY_V3IO_ACCESS_KEY")
 		username := os.Getenv("QUERY_V3IO_USERNAME")
 		password := os.Getenv("QUERY_V3IO_PASSWORD")
 		containerName := os.Getenv("QUERY_V3IO_CONTAINER")
@@ -129,7 +130,7 @@ func createV3ioAdapter(context *nuclio.Context, path string) error {
 			containerName = "bigdata"
 		}
 
-		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, username, password, containerName, context.Logger)
+		container, err := tsdb.NewContainer(v3ioUrl, numWorkers, accessKey, username, password, containerName, context.Logger)
 		if err != nil {
 			return errors.Wrap(err, "Failed to create container")
 		}
