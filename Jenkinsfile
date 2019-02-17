@@ -33,7 +33,7 @@ spec:
     - name: docker-cmd
       image: docker
       command: [ "/bin/sh", "-c", "--" ]
-      args: [ "while true; do sleep 30; done;" ]
+      args: [ "apk add make; while true; do sleep 30; done;" ]
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run
@@ -84,8 +84,8 @@ spec:
                     parallel(
                             'build tsdb-ingest': {
                                 container('docker-cmd') {
-                                    dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}/functions/ingest") {
-                                        sh("docker build . --tag tsdb-ingest:${DOCKER_TAG_VERSION}")
+                                    dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
+                                        sh("TSDB_TAG=${DOCKER_TAG_VERSION} make ingest")
                                     }
                                 }
 
@@ -96,8 +96,8 @@ spec:
 
                             'build tsdb-query': {
                                 container('docker-cmd') {
-                                    dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}/functions/query") {
-                                        sh("docker build . --tag tsdb-query:${DOCKER_TAG_VERSION}")
+                                    dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
+                                        sh("TSDB_TAG=${DOCKER_TAG_VERSION} make query")
                                     }
                                 }
 
