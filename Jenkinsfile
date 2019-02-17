@@ -85,7 +85,7 @@ spec:
                             'build tsdb-ingest': {
                                 container('docker-cmd') {
                                     dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
-                                        sh("TSDB_TAG=${DOCKER_TAG_VERSION} make ingest")
+                                        sh("TSDB_DOCKER_REPO= TSDB_TAG=${DOCKER_TAG_VERSION} make ingest")
                                     }
                                 }
 
@@ -97,7 +97,7 @@ spec:
                             'build tsdb-query': {
                                 container('docker-cmd') {
                                     dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
-                                        sh("TSDB_TAG=${DOCKER_TAG_VERSION} make query")
+                                        sh("TSDB_DOCKER_REPO= TSDB_TAG=${DOCKER_TAG_VERSION} make query")
                                     }
                                 }
 
