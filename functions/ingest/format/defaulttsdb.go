@@ -21,7 +21,7 @@ Example event:
 			{
 				"t": "1532595945142",
 				"v": {
-					"N": 95.2
+					"n": 95.2
 				}
 			},
 			{
@@ -35,7 +35,7 @@ Example event:
 */
 
 type value struct {
-	N float64 `json:"n,omitempty"`
+	N float64 `json:"n"`
 }
 
 type sample struct {
