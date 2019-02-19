@@ -11,7 +11,7 @@ import (
 /*
 Example event:
 
-{
+[{
 		"metric": "cpu",
 		"labels": {
 			"dc": "7",
@@ -31,7 +31,7 @@ Example event:
 				}
 			}
 		]
-}
+}]
 */
 
 type value struct {
