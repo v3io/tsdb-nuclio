@@ -11,7 +11,7 @@ import (
 const tcollector string = "tcollector"
 
 type Ingester interface {
-	Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) error
+	Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) interface{}
 }
 
 func IngesterForName(formatName string) Ingester {
@@ -44,4 +44,20 @@ func getLabelsFromRequest(metricName string, labelsFromRequest map[string]string
 	sort.Sort(labels)
 
 	return labels
+}
+
+func BadRequest(msg string) nuclio.Response {
+	return nuclio.Response{
+		StatusCode:  400,
+		ContentType: "application/text",
+		Body:        []byte(msg),
+	}
+}
+
+func InternalError(msg string) nuclio.Response {
+	return nuclio.Response{
+		StatusCode:  500,
+		ContentType: "application/text",
+		Body:        []byte(msg),
+	}
 }
