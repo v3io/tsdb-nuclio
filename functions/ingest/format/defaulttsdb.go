@@ -11,27 +11,29 @@ import (
 /*
 Example event:
 
-[{
-		"metric": "cpu",
-		"labels": {
-			"dc": "7",
-			"hostname": "mybesthost"
-		},
-		"samples": [
-			{
-				"t": "1532595945142",
-				"v": {
-					"n": 95.2
-				}
+[
+	{
+			"metric": "cpu",
+			"labels": {
+				"dc": "7",
+				"hostname": "mybesthost"
 			},
-			{
-				"t": "1532595948517",
-				"v": {
-					"n": 86.8
+			"samples": [
+				{
+					"t": "1532595945142",
+					"v": {
+						"n": 95.2
+					}
+				},
+				{
+					"t": "1532595948517",
+					"v": {
+						"n": 86.8
+					}
 				}
-			}
-		]
-}]
+			]
+	}
+]
 */
 
 type value struct {
