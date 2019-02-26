@@ -6,47 +6,7 @@ git_project_user = "v3io"
 git_deploy_user_token = "iguazio-prod-git-user-token"
 git_deploy_user_private_key = "iguazio-prod-git-user-private-key"
 
-podTemplate(label: "${git_project}-${label}", yaml: """
-apiVersion: v1
-kind: Pod
-metadata:
-  name: "${git_project}-${label}"
-  labels:
-    jenkins/kube-default: "true"
-    app: "jenkins"
-    component: "agent"
-spec:
-  shareProcessNamespace: true
-  containers:
-    - name: jnlp
-      image: jenkins/jnlp-slave
-      resources:
-        limits:
-          cpu: 1
-          memory: 2Gi
-        requests:
-          cpu: 1
-          memory: 2Gi
-      volumeMounts:
-        - name: go-shared
-          mountPath: /go
-    - name: docker-cmd
-      image: docker
-      command: [ "/bin/sh", "-c", "--" ]
-      args: [ "apk add make; while true; do sleep 30; done;" ]
-      volumeMounts:
-        - name: docker-sock
-          mountPath: /var/run
-        - name: go-shared
-          mountPath: /go
-  volumes:
-    - name: docker-sock
-      hostPath:
-          path: /var/run
-    - name: go-shared
-      emptyDir: {}
-"""
-) {
+podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
     node("${git_project}-${label}") {
         withCredentials([
                 string(credentialsId: git_deploy_user_token, variable: 'GIT_TOKEN')
