@@ -1,6 +1,5 @@
 label = "${UUID.randomUUID().toString()}"
 BUILD_FOLDER = "/go"
-expired=240
 git_project = "tsdb-nuclio"
 git_project_user = "gkirok"
 git_deploy_user_token = "iguazio-dev-git-user-token"
@@ -13,25 +12,24 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
         ]) {
             def TAG_VERSION
             def DOCKER_TAG_VERSION
-            pipelinex = library(identifier: 'pipelinex@DEVOPS-204-pipelinex', retriever: modernSCM(
-                    [$class: 'GitSCMSource',
+            pipelinex = library(identifier: 'pipelinex@shellc', retriever: modernSCM(
+                    [$class       : 'GitSCMSource',
                      credentialsId: git_deploy_user_private_key,
-                     remote: "git@github.com:iguazio/pipelinex.git"])).com.iguazio.pipelinex
-            multi_credentials=[pipelinex.DockerRepoDev.ARTIFACTORY_IGUAZIO, pipelinex.DockerRepoDev.DOCKER_HUB, pipelinex.DockerRepoDev.QUAY_IO]
+                     remote       : "git@github.com:iguazio/pipelinex.git"])).com.iguazio.pipelinex
+            multi_credentials = [pipelinex.DockerRepoDev.ARTIFACTORY_IGUAZIO, pipelinex.DockerRepoDev.DOCKER_HUB, pipelinex.DockerRepoDev.QUAY_IO]
 
             common.notify_slack {
                 stage('get tag data') {
                     container('jnlp') {
                         TAG_VERSION = github.get_tag_version(TAG_NAME)
                         DOCKER_TAG_VERSION = github.get_docker_tag_version(TAG_NAME)
-                        PUBLISHED_BEFORE = github.get_tag_published_before(git_project, git_project_user, "${TAG_VERSION}", GIT_TOKEN)
 
                         echo "$TAG_VERSION"
-                        echo "$PUBLISHED_BEFORE"
+                        echo "$DOCKER_TAG_VERSION"
                     }
                 }
 
-                if (TAG_VERSION != null && TAG_VERSION.length() > 0 && PUBLISHED_BEFORE < expired) {
+                if (github.check_tag_expiration(git_project, git_project_user, TAG_VERSION, GIT_TOKEN)) {
                     stage('prepare sources') {
                         container('jnlp') {
                             dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
@@ -70,16 +68,6 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
                     stage('update release status') {
                         container('jnlp') {
                             github.update_release_status(git_project, git_project_user, "${TAG_VERSION}", GIT_TOKEN)
-                        }
-                    }
-                } else {
-                    stage('warning') {
-                        if (PUBLISHED_BEFORE >= expired) {
-                            currentBuild.result = 'ABORTED'
-                            error("Tag too old, published before $PUBLISHED_BEFORE minutes.")
-                        } else {
-                            currentBuild.result = 'ABORTED'
-                            error("${TAG_VERSION} is not release tag.")
                         }
                     }
                 }
