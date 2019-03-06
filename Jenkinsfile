@@ -32,7 +32,6 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
                                     }
                                 }
                             },
-
                             'build tsdb-query in dood': {
                                 container('docker-cmd') {
                                     dir("${github.BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
