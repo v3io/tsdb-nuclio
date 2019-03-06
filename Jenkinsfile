@@ -27,16 +27,16 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
                     parallel(
                             'build tsdb-ingest in dood': {
                                 container('docker-cmd') {
-                                    dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
-                                        sh("TSDB_DOCKER_REPO= TSDB_TAG=${DOCKER_TAG_VERSION} make ingest")
+                                    dir("${github.BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
+                                        common.shellc("TSDB_DOCKER_REPO= TSDB_TAG=${github.DOCKER_TAG_VERSION} make ingest")
                                     }
                                 }
                             },
 
                             'build tsdb-query in dood': {
                                 container('docker-cmd') {
-                                    dir("${BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
-                                        sh("TSDB_DOCKER_REPO= TSDB_TAG=${DOCKER_TAG_VERSION} make query")
+                                    dir("${github.BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
+                                        common.shellc("TSDB_DOCKER_REPO= TSDB_TAG=${github.DOCKER_TAG_VERSION} make query")
                                     }
                                 }
                             }
