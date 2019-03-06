@@ -1,6 +1,6 @@
 label = "${UUID.randomUUID().toString()}"
 git_project = "tsdb-nuclio"
-git_project_user = "gkirok"
+git_project_user = "v3io"
 git_deploy_user_token = "iguazio-prod-git-user-token"
 git_deploy_user_private_key = "iguazio-prod-git-user-private-key"
 
@@ -44,7 +44,7 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
 
                     stage('push') {
                         container('docker-cmd') {
-                            dockerx.images_push_multi_registries(["tsdb-ingest:${github.DOCKER_TAG_VERSION}","tsdb-query:${github.DOCKER_TAG_VERSION}"], [pipelinex.DockerRepoDev.ARTIFACTORY_IGUAZIO, pipelinex.DockerRepoDev.DOCKER_HUB, pipelinex.DockerRepoDev.QUAY_IO])
+                            dockerx.images_push_multi_registries(["tsdb-ingest:${github.DOCKER_TAG_VERSION}","tsdb-query:${github.DOCKER_TAG_VERSION}"], [pipelinex.DockerRepo.ARTIFACTORY_IGUAZIO, pipelinex.DockerRepo.DOCKER_HUB, pipelinex.DockerRepo.QUAY_IO])
                         }
                     }
                 }
