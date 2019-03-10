@@ -11,27 +11,29 @@ import (
 /*
 Example event:
 
-{
-		"metric": "cpu",
-		"labels": {
-			"dc": "7",
-			"hostname": "mybesthost"
-		},
-		"samples": [
-			{
-				"t": "1532595945142",
-				"v": {
-					"n": 95.2
-				}
+[
+	{
+			"metric": "cpu",
+			"labels": {
+				"dc": "7",
+				"hostname": "mybesthost"
 			},
-			{
-				"t": "1532595948517",
-				"v": {
-					"n": 86.8
+			"samples": [
+				{
+					"t": "1532595945142",
+					"v": {
+						"n": 95.2
+					}
+				},
+				{
+					"t": "1532595948517",
+					"v": {
+						"n": 86.8
+					}
 				}
-			}
-		]
-}
+			]
+	}
+]
 */
 
 type value struct {
@@ -53,59 +55,60 @@ type request struct {
 type defaultTsdb struct{}
 
 func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) interface{} {
-	var request request
+	var requests []request
 
-	if err := json.Unmarshal(event.GetBody(), &request); err != nil {
+	if err := json.Unmarshal(event.GetBody(), &requests); err != nil {
 		InternalError(errors.Wrap(err, "Failed to deserialize JSON").Error())
 	}
 
-	if request.Metric == nil {
-		return BadRequest("Missing attribute: metric")
-	}
-	if *request.Metric == "" {
-		return BadRequest("Attribute is empty: metric")
-	}
-	if request.Samples == nil { // if json contains an empty array, this will not be triggered
-		return BadRequest("Missing attribute: samples")
-	}
-
-	// convert the map[string]string -> []Labels
-	labels := getLabelsFromRequest(*request.Metric, request.Labels)
-
-	var ref uint64
-	// iterate over request samples
-	for _, sample := range request.Samples {
-
-		if sample.Time == nil {
-			return BadRequest("Missing attribute in sample: t")
+	for _, request := range requests {
+		if request.Metric == nil {
+			return BadRequest("Missing attribute: metric")
 		}
-		if sample.Value == nil {
-			return BadRequest("Missing attribute in sample: v")
+		if *request.Metric == "" {
+			return BadRequest("Attribute is empty: metric")
 		}
-		if sample.Value.N == nil {
-			return BadRequest("Missing attribute in sample value: n")
+		if request.Samples == nil { // if json contains an empty array, this will not be triggered
+			return BadRequest("Missing attribute: samples")
 		}
 
-		var time = *sample.Time
-		// if time is not specified assume "now"
-		if time == "" {
-			time = "now"
-		}
+		// convert the map[string]string -> []Labels
+		labels := getLabelsFromRequest(*request.Metric, request.Labels)
 
-		// convert time string to time int, string can be: now, now-2h, int (unix milisec time), or RFC3339 date string
-		sampleTime, err := utils.Str2unixTime(time)
-		if err != nil {
-			return BadRequest(errors.Wrap(err, "Failed to parse time: "+time).Error())
-		}
+		var ref uint64
+		// iterate over request samples
+		for _, sample := range request.Samples {
+			if sample.Time == nil {
+				return BadRequest("Missing attribute in sample: t")
+			}
+			if sample.Value == nil {
+				return BadRequest("Missing attribute in sample: v")
+			}
+			if sample.Value.N == nil {
+				return BadRequest("Missing attribute in sample value: n")
+			}
 
-		// append sample to metric
-		if ref == 0 {
-			ref, err = tsdbAppender.Add(labels, sampleTime, sample.Value.N)
-		} else {
-			err = tsdbAppender.AddFast(labels, ref, sampleTime, sample.Value.N)
-		}
-		if err != nil {
-			return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
+			// if time is not specified assume "now"
+			var time = *sample.Time
+			if time == "" {
+				time = "now"
+			}
+
+			// convert time string to time int, string can be: now, now-2h, int (unix milisec time), or RFC3339 date string
+			sampleTime, err := utils.Str2unixTime(time)
+			if err != nil {
+				return BadRequest(errors.Wrap(err, "Failed to parse time: "+time).Error())
+			}
+
+			// append sample to metric
+			if ref == 0 {
+				ref, err = tsdbAppender.Add(labels, sampleTime, *sample.Value.N)
+			} else {
+				err = tsdbAppender.AddFast(labels, ref, sampleTime, *sample.Value.N)
+			}
+			if err != nil {
+				return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
+			}
 		}
 	}
 	return nil
