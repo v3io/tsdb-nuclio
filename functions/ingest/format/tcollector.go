@@ -25,14 +25,14 @@ type tInfo struct {
 //implements InputFormat
 type tcollectorFormat struct{}
 
-func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) error {
+func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) interface{} {
 
 	body := event.GetBody()
 	tinfos := make([]tInfo, 0)
 
 	// parse body
 	if err := json.Unmarshal(body, &tinfos); err != nil {
-		return errors.Wrapf(err, "Failed to parse request: %s", body)
+		return BadRequest(errors.Wrapf(err, "Failed to parse request: %s", body).Error())
 	}
 
 	var errBuilder strings.Builder
@@ -58,5 +58,5 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 		}
 
 	}
-	return errors.New(errBuilder.String())
+	return InternalError(errBuilder.String())
 }

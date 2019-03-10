@@ -37,48 +37,67 @@ Example event:
 */
 
 type value struct {
-	N float64 `json:"n"`
+	N *float64 `json:"n"`
 }
 
 type sample struct {
-	Time  string `json:"t"`
-	Value value  `json:"v"`
+	Time  *string `json:"t"`
+	Value *value  `json:"v"`
 }
 
 type request struct {
-	Metric  string            `json:"metric"`
-	Labels  map[string]string `json:"labels,omitempty"`
+	Metric  *string           `json:"metric"`
+	Labels  map[string]string `json:"labels"`
 	Samples []sample          `json:"samples"`
 }
 
 //implements InputFormat
 type defaultTsdb struct{}
 
-func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) error {
+func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) interface{} {
 	var requests []request
 
-	// parse body
 	if err := json.Unmarshal(event.GetBody(), &requests); err != nil {
-		return nuclio.WrapErrBadRequest(err)
+		InternalError(errors.Wrap(err, "Failed to deserialize JSON").Error())
 	}
 
 	for _, request := range requests {
+		if request.Metric == nil {
+			return BadRequest("Missing attribute: metric")
+		}
+		if *request.Metric == "" {
+			return BadRequest("Attribute is empty: metric")
+		}
+		if request.Samples == nil { // if json contains an empty array, this will not be triggered
+			return BadRequest("Missing attribute: samples")
+		}
+
 		// convert the map[string]string -> []Labels
-		labels := getLabelsFromRequest(request.Metric, request.Labels)
+		labels := getLabelsFromRequest(*request.Metric, request.Labels)
 
 		var ref uint64
 		// iterate over request samples
 		for _, sample := range request.Samples {
+			if sample.Time == nil {
+				return BadRequest("Missing attribute in sample: t")
+			}
+			if sample.Value == nil {
+				return BadRequest("Missing attribute in sample: v")
+			}
+			if sample.Value.N == nil {
+				return BadRequest("Missing attribute in sample value: n")
+			}
 
 			// if time is not specified assume "now"
-			if sample.Time == "" {
-				sample.Time = "now"
+			var time = *sample.Time
+			if time == "" {
+				time = "now"
 			}
 
 			// convert time string to time int, string can be: now, now-2h, int (unix milisec time), or RFC3339 date string
-			sampleTime, err := utils.Str2unixTime(sample.Time)
+			sampleTime, err := utils.Str2unixTime(time)
 			if err != nil {
-				return errors.Wrap(err, "Failed to parse time: "+sample.Time)
+				return BadRequest(errors.Wrap(err, "Failed to parse time: "+time).Error())
 			}
 
 			// append sample to metric
@@ -88,7 +107,7 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 				err = tsdbAppender.AddFast(labels, ref, sampleTime, sample.Value.N)
 			}
 			if err != nil {
-				return errors.Wrap(err, "Failed to add sample")
+				return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
 			}
 		}
 	}

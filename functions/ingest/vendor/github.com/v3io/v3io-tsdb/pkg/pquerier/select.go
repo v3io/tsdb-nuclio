@@ -10,6 +10,7 @@ import (
 
 	"github.com/nuclio/logger"
 	"github.com/pkg/errors"
+	"github.com/v3io/frames"
 	"github.com/v3io/v3io-go-http"
 	"github.com/v3io/v3io-tsdb/pkg/aggregate"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
@@ -39,8 +40,6 @@ type selectQueryContext struct {
 	requestChannels []chan *qryResults
 	errorChannel    chan error
 	wg              sync.WaitGroup
-
-	timeColumn Column
 }
 
 func (queryCtx *selectQueryContext) start(parts []*partmgr.DBPartition, params *SelectParams) (*frameIterator, error) {
@@ -104,8 +103,7 @@ func (queryCtx *selectQueryContext) start(parts []*partmgr.DBPartition, params *
 		queryCtx.totalColumns = queryCtx.frameList[0].Len()
 	}
 
-	frameIter := NewFrameIterator(queryCtx)
-	return frameIter, nil
+	return NewFrameIterator(queryCtx)
 }
 
 func (queryCtx *selectQueryContext) metricsAggregatesToString(metric string) (string, bool) {
@@ -136,7 +134,6 @@ func (queryCtx *selectQueryContext) queryPartition(partition *partmgr.DBPartitio
 	var err error
 
 	mint, maxt := partition.GetPartitionRange()
-	step := queryCtx.queryParams.Step
 
 	if queryCtx.queryParams.To < maxt {
 		maxt = queryCtx.queryParams.To
@@ -153,14 +150,14 @@ func (queryCtx *selectQueryContext) queryPartition(partition *partmgr.DBPartitio
 		// Check whether there are aggregations to add and aggregates aren't disabled
 		if functions != "" && !queryCtx.queryParams.disableAllAggr {
 
-			if step > partition.RollupTime() && queryCtx.queryParams.disableClientAggr {
-				step = partition.RollupTime()
+			if queryCtx.queryParams.Step > partition.RollupTime() && queryCtx.queryParams.disableClientAggr {
+				queryCtx.queryParams.Step = partition.RollupTime()
 			}
 
 			params, err := aggregate.NewAggregationParams(functions,
 				"v",
 				partition.AggrBuckets(),
-				step,
+				queryCtx.queryParams.Step,
 				partition.RollupTime(),
 				queryCtx.queryParams.Windows)
 
@@ -171,7 +168,7 @@ func (queryCtx *selectQueryContext) queryPartition(partition *partmgr.DBPartitio
 
 		}
 
-		newQuery := &partQuery{mint: mint, maxt: maxt, partition: partition, step: step}
+		newQuery := &partQuery{mint: mint, maxt: maxt, partition: partition, step: queryCtx.queryParams.Step}
 		if aggregationParams != nil {
 			// Cross series aggregations cannot use server side aggregates.
 			newQuery.useServerSideAggregates = aggregationParams.CanAggregate(partition.AggrType()) && !queryCtx.isCrossSeriesAggregate
@@ -417,16 +414,13 @@ func (queryCtx *selectQueryContext) getOrCreateTimeColumn() Column {
 	if queryCtx.isRawQuery() {
 		return nil
 	}
-	if queryCtx.timeColumn == nil {
-		queryCtx.timeColumn = queryCtx.generateTimeColumn()
-	}
 
-	return queryCtx.timeColumn
+	return queryCtx.generateTimeColumn()
 }
 
 func (queryCtx *selectQueryContext) generateTimeColumn() Column {
 	columnMeta := columnMeta{metric: "time"}
-	timeColumn := NewDataColumn("time", columnMeta, queryCtx.getResultBucketsSize(), TimeType)
+	timeColumn := NewDataColumn("time", columnMeta, queryCtx.getResultBucketsSize(), frames.TimeType)
 	i := 0
 	for t := queryCtx.queryParams.From; t <= queryCtx.queryParams.To; t += queryCtx.queryParams.Step {
 		timeColumn.SetDataAt(i, time.Unix(t/1000, (t%1000)*1e6))
@@ -436,7 +430,7 @@ func (queryCtx *selectQueryContext) generateTimeColumn() Column {
 }
 
 func (queryCtx *selectQueryContext) isRawQuery() bool {
-	return (!queryCtx.hasAtLeastOneFunction() && queryCtx.queryParams.Step == 0) || queryCtx.queryParams.disableClientAggr
+	return (!queryCtx.hasAtLeastOneFunction() && queryCtx.queryParams.Step == 0) || queryCtx.queryParams.disableAllAggr
 }
 
 func (queryCtx *selectQueryContext) hasAtLeastOneFunction() bool {
@@ -453,9 +447,6 @@ func (queryCtx *selectQueryContext) hasAtLeastOneFunction() bool {
 func (queryCtx *selectQueryContext) getResultBucketsSize() int {
 	if queryCtx.isRawQuery() {
 		return 0
-	}
-	if queryCtx.queryParams.To-queryCtx.queryParams.From == queryCtx.queryParams.Step {
-		return 1
 	}
 	return int((queryCtx.queryParams.To-queryCtx.queryParams.From)/queryCtx.queryParams.Step + 1)
 }
