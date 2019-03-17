@@ -100,9 +100,9 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 
 		// append sample to metric
 		if ref == 0 {
-			ref, err = tsdbAppender.Add(labels, sampleTime, sample.Value.N)
+			ref, err = tsdbAppender.Add(labels, sampleTime, *sample.Value.N)
 		} else {
-			err = tsdbAppender.AddFast(labels, ref, sampleTime, sample.Value.N)
+			err = tsdbAppender.AddFast(labels, ref, sampleTime, *sample.Value.N)
 		}
 		if err != nil {
 			return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
