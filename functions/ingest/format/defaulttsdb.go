@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
+	"strings"
 )
 
 /*
@@ -57,8 +58,18 @@ type defaultTsdb struct{}
 func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Event) interface{} {
 	var requests []request
 
-	if err := json.Unmarshal(event.GetBody(), &requests); err != nil {
-		InternalError(errors.Wrap(err, "Failed to deserialize JSON").Error())
+	body := event.GetBody()
+	if strings.HasPrefix(strings.TrimSpace(string(body)), "[") {
+		if err := json.Unmarshal(body, &requests); err != nil {
+			return InternalError(errors.Wrap(err, "Failed to deserialize requests").Error())
+		}
+	} else {
+		var req request
+
+		if err := json.Unmarshal(body, &req); err != nil {
+			return InternalError(errors.Wrap(err, "Failed to deserialize request").Error())
+		}
+		requests = []request{req}
 	}
 
 	for _, request := range requests {
