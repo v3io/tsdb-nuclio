@@ -39,13 +39,15 @@ type V3ioQuerier struct {
 }
 
 type SelectParams struct {
-	Name             string
-	Functions        string
-	From, To, Step   int64
-	Windows          []int
-	Filter           string
-	RequestedColumns []RequestedColumn
-	GroupBy          string
+	Name              string
+	Functions         string
+	From, To, Step    int64
+	Windows           []int
+	Filter            string
+	RequestedColumns  []RequestedColumn
+	GroupBy           string
+	AggregationWindow int64
+	UseOnlyClientAggr bool
 
 	disableAllAggr    bool
 	disableClientAggr bool
@@ -75,7 +77,6 @@ func (q *V3ioQuerier) SelectProm(params *SelectParams, noAggr bool) (utils.Serie
 
 	params.disableClientAggr = true
 	params.disableAllAggr = noAggr
-
 	iter, err := q.baseSelectQry(params, false)
 	if err != nil || iter == nil {
 		return utils.NullSeriesSet{}, err
@@ -122,11 +123,17 @@ func (q *V3ioQuerier) baseSelectQry(params *SelectParams, showAggregateLabel boo
 		return nil, errors.New("Query workers num must be a power of 2 and > 0 !")
 	}
 
+	// If the config is set to use only client configuration override the query parameter.
+	if q.cfg.UsePreciseAggregations {
+		params.UseOnlyClientAggr = true
+	}
+
 	selectContext := selectQueryContext{
 		container:          q.container,
 		logger:             q.logger,
 		workers:            q.cfg.QryWorkers,
 		showAggregateLabel: showAggregateLabel,
+		v3ioConfig:         q.cfg,
 	}
 
 	q.logger.Debug("Select query:\n\tMetric: %s\n\tStart Time: %s (%d)\n\tEnd Time: %s (%d)\n\tFunction: %s\n\t"+
@@ -138,7 +145,8 @@ func (q *V3ioQuerier) baseSelectQry(params *SelectParams, showAggregateLabel boo
 	q.performanceReporter.WithTimer("QueryTimer", func() {
 		params.Filter = strings.Replace(params.Filter, config.PrometheusMetricNameAttribute, config.MetricNameAttrName, -1)
 
-		parts := q.partitionMngr.PartsForRange(params.From, params.To, true)
+		// Get all partitions containing data relevant to the query. If the Aggregation Window parameter is specified take it in account.
+		parts := q.partitionMngr.PartsForRange(params.From-params.AggregationWindow, params.To, true)
 		if len(parts) == 0 {
 			return
 		}
@@ -172,6 +180,11 @@ func (q *V3ioQuerier) LabelValues(labelKey string) (result []string, err error) 
 		}
 	})
 	return
+}
+
+// Stub
+func (q *V3ioQuerier) LabelNames() ([]string, error) {
+	return nil, nil
 }
 
 func (q *V3ioQuerier) getMetricNames() ([]string, error) {

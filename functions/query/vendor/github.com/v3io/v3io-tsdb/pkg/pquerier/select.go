@@ -22,9 +22,10 @@ import (
 const defaultToleranceFactor = 2
 
 type selectQueryContext struct {
-	logger    logger.Logger
-	container *v3io.Container
-	workers   int
+	logger     logger.Logger
+	container  *v3io.Container
+	workers    int
+	v3ioConfig *config.V3ioConfig
 
 	queryParams        *SelectParams
 	showAggregateLabel bool
@@ -158,8 +159,11 @@ func (queryCtx *selectQueryContext) queryPartition(partition *partmgr.DBPartitio
 				"v",
 				partition.AggrBuckets(),
 				queryCtx.queryParams.Step,
+				queryCtx.queryParams.AggregationWindow,
 				partition.RollupTime(),
-				queryCtx.queryParams.Windows)
+				queryCtx.queryParams.Windows,
+				queryCtx.queryParams.disableClientAggr,
+				queryCtx.v3ioConfig.UseServerAggregateCoefficient)
 
 			if err != nil {
 				return nil, err
@@ -171,7 +175,9 @@ func (queryCtx *selectQueryContext) queryPartition(partition *partmgr.DBPartitio
 		newQuery := &partQuery{mint: mint, maxt: maxt, partition: partition, step: queryCtx.queryParams.Step}
 		if aggregationParams != nil {
 			// Cross series aggregations cannot use server side aggregates.
-			newQuery.useServerSideAggregates = aggregationParams.CanAggregate(partition.AggrType()) && !queryCtx.isCrossSeriesAggregate
+			newQuery.useServerSideAggregates = aggregationParams.CanAggregate(partition.AggrType()) &&
+				!queryCtx.isCrossSeriesAggregate &&
+				!queryCtx.queryParams.UseOnlyClientAggr
 			if newQuery.useServerSideAggregates || !queryCtx.queryParams.disableClientAggr {
 				newQuery.aggregationParams = aggregationParams
 			}
@@ -488,7 +494,7 @@ func (query *partQuery) getItems(ctx *selectQueryContext, name string, preAggreg
 	// It is possible to request both server aggregates and raw chunk data (to downsample) for the same metric
 	// example: `select max(cpu), avg(cpu), cpu` with step = 1h
 	if !query.useServerSideAggregates || aggregatesAndChunk {
-		chunkAttr, chunk0Time := query.partition.Range2Attrs("v", query.mint, query.maxt)
+		chunkAttr, chunk0Time := query.partition.Range2Attrs("v", query.mint-ctx.queryParams.AggregationWindow, query.maxt)
 		query.chunk0Time = chunk0Time
 		query.attrs = append(query.attrs, chunkAttr...)
 	}
