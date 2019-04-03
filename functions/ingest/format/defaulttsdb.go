@@ -39,6 +39,7 @@ Example event:
 
 type value struct {
 	N *float64 `json:"n"`
+	S *string  `json:"s"`
 }
 
 type sample struct {
@@ -89,14 +90,21 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 		var ref uint64
 		// iterate over request samples
 		for _, sample := range request.Samples {
+			var value interface{}
+
 			if sample.Time == nil {
 				return BadRequest("Missing attribute in sample: t")
 			}
 			if sample.Value == nil {
 				return BadRequest("Missing attribute in sample: v")
 			}
-			if sample.Value.N == nil {
-				return BadRequest("Missing attribute in sample value: n")
+
+			if sample.Value.N != nil {
+				value = *sample.Value.N
+			} else if sample.Value.S != nil {
+				value = *sample.Value.S
+			} else {
+				return BadRequest("Missing attribute in sample value: 'n' or 's'")
 			}
 
 			// if time is not specified assume "now"
@@ -113,9 +121,9 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 
 			// append sample to metric
 			if ref == 0 {
-				ref, err = tsdbAppender.Add(labels, sampleTime, *sample.Value.N)
+				ref, err = tsdbAppender.Add(labels, sampleTime, value)
 			} else {
-				err = tsdbAppender.AddFast(labels, ref, sampleTime, *sample.Value.N)
+				err = tsdbAppender.AddFast(labels, ref, sampleTime, value)
 			}
 			if err != nil {
 				return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
