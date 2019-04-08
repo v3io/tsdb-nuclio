@@ -246,7 +246,7 @@ func (sc *SyncContainer) GetItems(input *GetItemsInput) (*Response, error) {
 
 	//validate getItems response to avoid infinite loop
 	if getItemsResponse.LastItemIncluded != "TRUE" && (getItemsResponse.NextMarker == "" || getItemsResponse.NextMarker == input.Marker) {
-		errMsg := fmt.Sprintf("Invalid getItems response: lastItemIncluded='false' and nextMarker='%s', " +
+		errMsg := fmt.Sprintf("Invalid getItems response: lastItemIncluded=false and nextMarker='%s', "+
 			"startMarker='%s', probably due to object size bigger than 2M. Query is: %+v", getItemsResponse.NextMarker, input.Marker, input)
 		sc.logger.Warn(errMsg)
 	}
@@ -280,7 +280,7 @@ func (sc *SyncContainer) GetItemsCursor(input *GetItemsInput) (*SyncItemsCursor,
 func (sc *SyncContainer) PutItem(input *PutItemInput) error {
 
 	// prepare the query path
-	_, err := sc.putItem(input.Path, putItemFunctionName, input.Attributes, putItemHeaders, nil)
+	_, err := sc.putItem(input.Path, putItemFunctionName, input.Attributes, input.Condition, putItemHeaders, nil)
 	return err
 }
 
@@ -297,7 +297,8 @@ func (sc *SyncContainer) PutItems(input *PutItemsInput) (*Response, error) {
 	for itemKey, itemAttributes := range input.Items {
 
 		// try to post the item
-		_, err := sc.putItem(input.Path+"/"+itemKey, putItemFunctionName, itemAttributes, putItemHeaders, nil)
+		_, err := sc.putItem(
+			input.Path+"/"+itemKey, putItemFunctionName, itemAttributes, input.Condition, putItemHeaders, nil)
 
 		// if there was an error, shove it to the list of errors
 		if err != nil {
@@ -329,11 +330,12 @@ func (sc *SyncContainer) UpdateItem(input *UpdateItemInput) error {
 			"UpdateMode": "CreateOrReplaceAttributes",
 		}
 
-		_, err = sc.putItem(input.Path, putItemFunctionName, input.Attributes, putItemHeaders, body)
+		_, err = sc.putItem(input.Path, putItemFunctionName, input.Attributes, input.Condition, putItemHeaders, body)
 
 	} else if input.Expression != nil {
 
-		_, err = sc.updateItemWithExpression(input.Path, updateItemFunctionName, *input.Expression, updateItemHeaders)
+		_, err = sc.updateItemWithExpression(
+			input.Path, updateItemFunctionName, *input.Expression, input.Condition, updateItemHeaders)
 	}
 
 	return err
@@ -393,9 +395,20 @@ func (sc *SyncContainer) PutRecords(input *PutRecordsInput) (*Response, error) {
 		buffer.WriteString(base64.StdEncoding.EncodeToString(record.Data))
 		buffer.WriteString(`"`)
 
+		if record.ClientInfo != nil {
+			buffer.WriteString(`,"ClientInfo": "`)
+			buffer.WriteString(base64.StdEncoding.EncodeToString(record.ClientInfo))
+			buffer.WriteString(`"`)
+		}
+
 		if record.ShardID != nil {
 			buffer.WriteString(`, "ShardId": `)
 			buffer.WriteString(strconv.Itoa(*record.ShardID))
+		}
+
+		if record.PartitionKey != "" {
+			buffer.WriteString(`, "PartitionKey": `)
+			buffer.WriteString(`"` + record.PartitionKey + `"`)
 		}
 
 		// add comma if not last
@@ -440,8 +453,9 @@ func (sc *SyncContainer) SeekShard(input *SeekShardInput) (*Response, error) {
 		buffer.WriteString(`, "StartingSequenceNumber": `)
 		buffer.WriteString(strconv.Itoa(input.StartingSequenceNumber))
 	} else if input.Type == SeekShardInputTypeTime {
-		buffer.WriteString(`, "TimeStamp": `)
+		buffer.WriteString(`, "TimestampSec": `)
 		buffer.WriteString(strconv.Itoa(input.Timestamp))
+		buffer.WriteString(`, "TimestampNSec": 0`)
 	}
 
 	buffer.WriteString(`}`)
@@ -492,6 +506,7 @@ func (sc *SyncContainer) GetRecords(input *GetRecordsInput) (*Response, error) {
 func (sc *SyncContainer) putItem(path string,
 	functionName string,
 	attributes map[string]interface{},
+	condition string,
 	headers map[string]string,
 	body map[string]interface{}) (*Response, error) {
 
@@ -509,6 +524,10 @@ func (sc *SyncContainer) putItem(path string,
 	// set item in body (use what the user passed as a base)
 	body["Item"] = typedAttributes
 
+	if condition != "" {
+		body["ConditionExpression"] = condition
+	}
+
 	jsonEncodedBodyContents, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -520,11 +539,16 @@ func (sc *SyncContainer) putItem(path string,
 func (sc *SyncContainer) updateItemWithExpression(path string,
 	functionName string,
 	expression string,
+	condition string,
 	headers map[string]string) (*Response, error) {
 
 	body := map[string]interface{}{
 		"UpdateExpression": expression,
 		"UpdateMode":       "CreateOrReplaceAttributes",
+	}
+
+	if condition != "" {
+		body["ConditionExpression"] = condition
 	}
 
 	jsonEncodedBodyContents, err := json.Marshal(body)
