@@ -6,11 +6,6 @@ github.com/cpuguy83/go-md2man/md2man
 github.com/davecgh/go-spew/spew
 # github.com/ghodss/yaml v1.0.0
 github.com/ghodss/yaml
-# github.com/go-kit/kit v0.8.0
-github.com/go-kit/kit/log
-github.com/go-kit/kit/log/level
-# github.com/go-logfmt/logfmt v0.4.0
-github.com/go-logfmt/logfmt
 # github.com/golang/protobuf v1.2.0
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
@@ -27,8 +22,6 @@ github.com/klauspost/compress/gzip
 github.com/klauspost/compress/zlib
 # github.com/klauspost/cpuid v0.0.0-20180405133222-e7e905edc00e
 github.com/klauspost/cpuid
-# github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
-github.com/kr/logfmt
 # github.com/mattn/go-colorable v0.0.9
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.4
@@ -54,11 +47,6 @@ github.com/pavius/zap/internal/exit
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/common v0.2.0
-github.com/prometheus/common/model
-# github.com/prometheus/prometheus v2.8.0+incompatible
-github.com/prometheus/prometheus/pkg/labels
-github.com/prometheus/prometheus/storage
 # github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 github.com/rcrowley/go-metrics
 # github.com/russross/blackfriday v1.5.2+incompatible
