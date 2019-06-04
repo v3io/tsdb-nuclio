@@ -22,12 +22,14 @@ github.com/klauspost/compress/gzip
 github.com/klauspost/compress/zlib
 # github.com/klauspost/cpuid v0.0.0-20180405133222-e7e905edc00e
 github.com/klauspost/cpuid
-# github.com/mattn/go-colorable v0.0.9
+# github.com/mattn/go-colorable v0.1.1
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.4
+# github.com/mattn/go-isatty v0.0.5
 github.com/mattn/go-isatty
 # github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b
 github.com/mgutz/ansi
+# github.com/nuclio/errors v0.0.1
+github.com/nuclio/errors
 # github.com/nuclio/logger v0.0.1
 github.com/nuclio/logger
 # github.com/nuclio/nuclio-sdk-go v0.0.0-20190205170814-3b507fbd0324
@@ -36,7 +38,7 @@ github.com/nuclio/nuclio-sdk-go
 github.com/nuclio/nuclio-test-go
 # github.com/nuclio/zap v0.0.2
 github.com/nuclio/zap
-# github.com/pavius/zap v0.0.0-20180228181622-8d52692529b8
+# github.com/pavius/zap v1.4.2-0.20180228181622-8d52692529b8
 github.com/pavius/zap
 github.com/pavius/zap/zapcore
 github.com/pavius/zap/internal/bufferpool
@@ -63,11 +65,15 @@ github.com/stretchr/testify/require
 # github.com/v3io/frames v0.0.0-20190328123118-1dad1ff610509e7b087d9cd390ed1b452caecf15
 github.com/v3io/frames
 github.com/v3io/frames/pb
+# github.com/v3io/v3io-go v0.0.0-20180415000000-1486c75b0e590a14580f7d9b6cef7a944a231ca7
+github.com/v3io/v3io-go/pkg/dataplane
+github.com/v3io/v3io-go/pkg/errors
+github.com/v3io/v3io-go/pkg/dataplane/http
 # github.com/v3io/v3io-go-http v0.0.0-20190221115935-53e2b487c9a2
 github.com/v3io/v3io-go-http
 # github.com/valyala/bytebufferpool v1.0.0
 github.com/valyala/bytebufferpool
-# github.com/valyala/fasthttp v1.0.0
+# github.com/valyala/fasthttp v1.2.0
 github.com/valyala/fasthttp
 github.com/valyala/fasthttp/fasthttputil
 github.com/valyala/fasthttp/stackless
@@ -89,7 +95,7 @@ golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/http/httpguts
 golang.org/x/net/idna
-# golang.org/x/sys v0.0.0-20181116152217-5ac8a444bdc5
+# golang.org/x/sys v0.0.0-20190222072716-a9d3bda3a223
 golang.org/x/sys/unix
 # golang.org/x/text v0.3.0
 golang.org/x/text/secure/bidirule
