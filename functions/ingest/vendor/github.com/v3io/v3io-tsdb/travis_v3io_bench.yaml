@@ -1,0 +1,6 @@
+container: "bigdata"
+workers: 8
+batchSize: 2048
+
+performance:
+  reportOnShutdown: false
