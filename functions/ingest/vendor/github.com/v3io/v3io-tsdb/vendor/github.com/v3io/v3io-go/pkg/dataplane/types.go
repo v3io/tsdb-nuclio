@@ -20,6 +20,8 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/xml"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -31,7 +33,7 @@ type NewContextInput struct {
 	ClusterEndpoints []string
 	NumWorkers       int
 	RequestChanLen   int
-	TlsConfig        *tls.Config
+	TLSConfig        *tls.Config
 	DialTimeout      time.Duration
 }
 
@@ -67,30 +69,68 @@ type DataPlaneOutput struct {
 
 type GetContainerContentsInput struct {
 	DataPlaneInput
-	Path string
+	Path             string
+	GetAllAttributes bool   // if "true" return ALL available attributes
+	DirectoriesOnly  bool   // if "true" return directory entries only, otherwise return children of any kind
+	Limit            int    // max number of entries per request
+	Marker           string // start from specific entry (e.g. to get next chunk)
 }
 
 type Content struct {
-	XMLName        xml.Name `xml:"Contents"`
-	Key            string   `xml:"Key"`
-	Size           int      `xml:"Size"`
-	LastSequenceID int      `xml:"LastSequenceId"`
-	ETag           string   `xml:"ETag"`
-	LastModified   string   `xml:"LastModified"`
+	Key            string `xml:"Key"`
+	Size           *int   `xml:"Size"`           // file size in bytes
+	LastSequenceID *int   `xml:"LastSequenceId"` // greater than zero for shard files
+	LastModified   string `xml:"LastModified"`   // Date in format time.RFC3339: "2019-06-02T14:30:39.18Z"
+
+	Mode         FileMode `xml:"Mode"`         // octal (ListDir) or decimal (GetItems) base, depends on API, e.g. 33204 or 0100664
+	AccessTime   string   `xml:"AccessTime"`   // Date in format time.RFC3339: "2019-06-02T14:30:39.18Z"
+	CreatingTime string   `xml:"CreatingTime"` // Date in format time.RFC3339: "2019-06-02T14:30:39.18Z"
+	GID          string   `xml:"GID"`          // Hexadecimal representation of GID (e.g. "3e8" -> i.e. "0x3e8" == 1000)
+	UID          string   `xml:"UID"`          // Hexadecimal representation of UID (e.g. "3e8" -> i.e. "0x3e8" == 1000)
+	InodeNumber  *uint32  `xml:"InodeNumber"`  // iNode number
 }
 
 type CommonPrefix struct {
-	CommonPrefixes xml.Name `xml:"CommonPrefixes"`
-	Prefix         string   `xml:"Prefix"`
+	Prefix       string   `xml:"Prefix"`       // directory name
+	LastModified string   `xml:"LastModified"` // Date in format time.RFC3339: "2019-06-02T14:30:39.18Z"
+	AccessTime   string   `xml:"AccessTime"`   // Date in format time.RFC3339: "2019-06-02T14:30:39.18Z"
+	CreatingTime string   `xml:"CreatingTime"` // Date in format time.RFC3339: "2019-06-02T14:30:39.18Z"
+	Mode         FileMode `xml:"Mode"`         // octal number, e.g. 040775
+	GID          string   `xml:"GID"`          // Hexadecimal representation of GID (e.g. "3e8" -> i.e. "0x3e8" == 1000)
+	UID          string   `xml:"UID"`          // Hexadecimal representation of UID (e.g. "3e8" -> i.e. "0x3e8" == 1000)
+	InodeNumber  *uint32  `xml:"InodeNumber"`  // iNode number
+}
+
+type FileMode string
+
+func (vfm FileMode) FileMode() os.FileMode {
+	return mode(vfm)
+}
+
+func (vfm FileMode) String() string {
+	return vfm.FileMode().String()
+}
+
+func mode(v3ioFileMode FileMode) os.FileMode {
+	const S_IFMT = 0xf000
+	const IP_OFFMASK = 0x1fff
+
+	// Convert 16 bit octal representation of V3IO into decimal 32 bit representation of Go
+	mode, err := strconv.ParseUint(string(v3ioFileMode), 8, 32)
+	if err != nil {
+		panic(err)
+	}
+	golangFileMode := ((mode & S_IFMT) << 17) | (mode & IP_OFFMASK)
+	return os.FileMode(golangFileMode)
 }
 
 type GetContainerContentsOutput struct {
-	BucketName     xml.Name       `xml:"ListBucketResult"`
-	Name           string         `xml:"Name"`
-	NextMarker     string         `xml:"NextMarker"`
-	MaxKeys        string         `xml:"MaxKeys"`
-	Contents       []Content      `xml:"Contents"`
-	CommonPrefixes []CommonPrefix `xml:"CommonPrefixes"`
+	Name           string         `xml:"Name"`           // Bucket name
+	NextMarker     string         `xml:"NextMarker"`     // if not empty and isTruncated="true" - has more children (need another fetch to get them)
+	MaxKeys        string         `xml:"MaxKeys"`        // max number of entries in single batch
+	Contents       []Content      `xml:"Contents"`       // files
+	CommonPrefixes []CommonPrefix `xml:"CommonPrefixes"` // directories
+	IsTruncated    bool           `xml:"IsTruncated"`    // "true" if has more content. Note, "NextMarker" should not be empty if "true"
 }
 
 type GetContainersInput struct {
@@ -185,6 +225,7 @@ type GetItemOutput struct {
 type GetItemsInput struct {
 	DataPlaneInput
 	Path              string
+	TableName         string
 	AttributeNames    []string
 	Filter            string
 	Marker            string
