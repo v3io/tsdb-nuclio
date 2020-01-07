@@ -460,7 +460,7 @@ func (sc *SyncContainer) SeekShard(input *SeekShardInput) (*Response, error) {
 
 	buffer.WriteString(`}`)
 
-	response, err := sc.session.sendRequest("POST", sc.getPathURI(input.Path), seekShardsHeaders, buffer.Bytes(), false)
+	response, err := sc.session.sendRequest("PUT", sc.getPathURI(input.Path), seekShardsHeaders, buffer.Bytes(), false)
 	if err != nil {
 		return nil, err
 	}
@@ -484,7 +484,7 @@ func (sc *SyncContainer) GetRecords(input *GetRecordsInput) (*Response, error) {
 		input.Location,
 		input.Limit)
 
-	response, err := sc.session.sendRequest("POST", sc.getPathURI(input.Path), getRecordsHeaders, []byte(body), false)
+	response, err := sc.session.sendRequest("PUT", sc.getPathURI(input.Path), getRecordsHeaders, []byte(body), false)
 	if err != nil {
 		return nil, err
 	}

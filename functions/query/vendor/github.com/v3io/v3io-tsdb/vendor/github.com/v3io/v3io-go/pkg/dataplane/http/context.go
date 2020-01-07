@@ -309,6 +309,12 @@ func (c *context) PutItem(putItemInput *v3io.PutItemInput,
 
 // PutItemSync
 func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) error {
+	var body map[string]interface{}
+	if putItemInput.UpdateMode != "" {
+		body = map[string]interface{}{
+			"UpdateMode": putItemInput.UpdateMode,
+		}
+	}
 
 	// prepare the query path
 	_, err := c.putItem(&putItemInput.DataPlaneInput,
@@ -317,7 +323,7 @@ func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) error {
 		putItemInput.Attributes,
 		putItemInput.Condition,
 		putItemHeaders,
-		nil)
+		body)
 
 	return err
 }
@@ -390,6 +396,10 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) error {
 			"UpdateMode": "CreateOrReplaceAttributes",
 		}
 
+		if updateItemInput.UpdateMode != "" {
+			body["UpdateMode"] = updateItemInput.UpdateMode
+		}
+
 		_, err = c.putItem(&updateItemInput.DataPlaneInput,
 			updateItemInput.Path,
 			putItemFunctionName,
@@ -405,7 +415,8 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) error {
 			updateItemFunctionName,
 			*updateItemInput.Expression,
 			updateItemInput.Condition,
-			updateItemHeaders)
+			updateItemHeaders,
+			updateItemInput.UpdateMode)
 	}
 
 	return err
@@ -741,12 +752,18 @@ func (c *context) updateItemWithExpression(dataPlaneInput *v3io.DataPlaneInput,
 	functionName string,
 	expression string,
 	condition string,
-	headers map[string]string) (*v3io.Response, error) {
+	headers map[string]string,
+	updateMode string) (*v3io.Response, error) {
 
 	body := map[string]interface{}{
 		"UpdateExpression": expression,
 		"UpdateMode":       "CreateOrReplaceAttributes",
 	}
+
+	if updateMode != "" {
+		body["UpdateMode"] = updateMode
+	}
+
 
 	if condition != "" {
 		body["ConditionExpression"] = condition
@@ -902,7 +919,7 @@ func (c *context) buildRequestURI(urlString string, containerName string, query 
 	if strings.HasSuffix(pathStr, "/") {
 		uri.Path += "/" // retain trailing slash
 	}
-	uri.RawQuery = query
+	uri.RawQuery = strings.ReplaceAll(query, " ", "%20")
 	return uri, nil
 }
 
