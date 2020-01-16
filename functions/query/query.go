@@ -39,10 +39,9 @@ var adapter *tsdb.V3ioAdapter
 var adapterLock sync.Mutex
 
 func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
-	request := request{}
 
-	// try to unmarshal the request. return bad request if failed
-	if err := json.Unmarshal(event.GetBody(), &request); err != nil {
+	request, err := validateRequest(event.GetBody())
+	if err != nil {
 		return nil, nuclio.WrapErrBadRequest(err)
 	}
 
@@ -152,4 +151,73 @@ func toNumber(input string, defaultValue int) (int, error) {
 	}
 
 	return strconv.Atoi(input)
+}
+
+func validateRequest(eventBody []byte) (*request, error) {
+
+	requestMap := make(map[string]interface{})
+	if err := json.Unmarshal(eventBody, &requestMap); err != nil {
+		return nil, errors.Wrap(err, "Request body must be a valid JSON object")
+	}
+
+	request := request{}
+	metric, ok := requestMap["metric"]
+	delete(requestMap, "metric")
+	if !ok {
+		return nil, errors.New("Request object is missing 'metric' field")
+	}
+	request.Metric, ok = metric.(string)
+	if !ok {
+		return nil, errors.New("'metric' field must be a string")
+	}
+	var err error
+	request.FilterExpression, err = validateOptionalString(requestMap, "filter_expression")
+	if err != nil {
+		return nil, err
+	}
+	request.Step, err = validateOptionalString(requestMap, "step")
+	if err != nil {
+		return nil, err
+	}
+	request.StartTime, err = validateOptionalString(requestMap, "start_time")
+	if err != nil {
+		return nil, err
+	}
+	request.EndTime, err = validateOptionalString(requestMap, "end_time")
+	if err != nil {
+		return nil, err
+	}
+	request.Last, err = validateOptionalString(requestMap, "last")
+	if err != nil {
+		return nil, err
+	}
+	aggregators, ok := requestMap["aggregators"]
+	delete(requestMap, "aggregators")
+	if ok {
+		request.Aggregators, ok = aggregators.([]string)
+		if !ok {
+			return nil, errors.New("'aggregators' field must be a string array")
+		}
+	}
+	var unsupportedFields []string
+	for key, _ := range requestMap {
+		unsupportedFields = append(unsupportedFields, key)
+	}
+	if len(unsupportedFields) > 0 {
+		return nil, errors.Errorf("Request must not contain unsupported fields: %s", strings.Join(unsupportedFields, ", "))
+	}
+	return &request, nil
+}
+
+func validateOptionalString(requestMap map[string]interface{}, fieldName string) (string, error) {
+	value, ok := requestMap[fieldName]
+	delete(requestMap, fieldName)
+	if !ok {
+		value = ""
+	}
+	str, ok := value.(string)
+	if !ok {
+		return "", errors.Errorf("'%s' field must be a string", fieldName)
+	}
+	return str, nil
 }
