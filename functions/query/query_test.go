@@ -43,7 +43,8 @@ func (suite *QueryTestSuite) TestValidateRequestBadAggregators() {
 
 func (suite *QueryTestSuite) TestValidateRequestBadFieldName() {
 	requestString := `{
-    	"m3tric": "cpu"
+    	"m3tric": "cpu",
+    	"filter_expression": "1==1"
 	}`
 	_, err := validateRequest([]byte(requestString))
 	suite.Error(err)
@@ -76,10 +77,12 @@ func (suite *QueryTestSuite) TestValidateRequestMinimal() {
 
 func (suite *QueryTestSuite) TestValidateRequestWithoutMetric() {
 	requestString := `{
+		"filter_expression": "1==1",
     	"end_time": "1542111395000"
 	}`
 	expected := &request{
-		EndTime: "1542111395000",
+		FilterExpression: "1==1",
+		EndTime:          "1542111395000",
 	}
 	req, err := validateRequest([]byte(requestString))
 	suite.NoError(err)
@@ -110,12 +113,22 @@ func (suite *QueryTestSuite) TestValidateRequestUnsupportedField() {
 
 func (suite *QueryTestSuite) TestValidateRequestLastAndEndTime() {
 	requestString := `{
+		"metric": "cpu",
     	"last": "123",
 		"end_time": "1542111395000"
 	}`
 	_, err := validateRequest([]byte(requestString))
 	suite.Error(err)
-	expectedErrorMessage := "'last' field must be used in conjunction with 'start_time' or 'end_time'"
+	expectedErrorMessage := "'last' field must not be used in conjunction with 'start_time' or 'end_time'"
+	suite.Equal(expectedErrorMessage, err.Error())
+}
+
+func (suite *QueryTestSuite) TestValidateEmptyRequest() {
+	requestString := `{
+	}`
+	_, err := validateRequest([]byte(requestString))
+	suite.Error(err)
+	expectedErrorMessage := "Request must contain either a 'metric' field or 'filter_expression' field"
 	suite.Equal(expectedErrorMessage, err.Error())
 }
 

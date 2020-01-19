@@ -187,7 +187,10 @@ func validateRequest(eventBody []byte) (*request, error) {
 		return nil, err
 	}
 	if request.Last != "" && (request.StartTime != "" || request.EndTime != "") {
-		return nil, errors.New("'last' field must be used in conjunction with 'start_time' or 'end_time'")
+		return nil, errors.New("'last' field must not be used in conjunction with 'start_time' or 'end_time'")
+	}
+	if request.Metric == "" && request.FilterExpression == "" {
+		return nil, errors.New("Request must contain either a 'metric' field or 'filter_expression' field")
 	}
 	aggregators, ok := requestMap["aggregators"]
 	delete(requestMap, "aggregators")
