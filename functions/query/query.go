@@ -161,16 +161,11 @@ func validateRequest(eventBody []byte) (*request, error) {
 	}
 
 	request := request{}
-	metric, ok := requestMap["metric"]
-	delete(requestMap, "metric")
-	if !ok {
-		return nil, errors.New("Request object is missing 'metric' field")
-	}
-	request.Metric, ok = metric.(string)
-	if !ok {
-		return nil, errors.New("'metric' field must be a string")
-	}
 	var err error
+	request.Metric, err = validateOptionalString(requestMap, "metric")
+	if err != nil {
+		return nil, err
+	}
 	request.FilterExpression, err = validateOptionalString(requestMap, "filter_expression")
 	if err != nil {
 		return nil, err

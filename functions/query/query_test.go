@@ -43,14 +43,11 @@ func (suite *QueryTestSuite) TestValidateRequestBadAggregators() {
 
 func (suite *QueryTestSuite) TestValidateRequestBadFieldName() {
 	requestString := `{
-    	"M3tric": "cpu",
-    	"Aggregators": ["max", "stdvar"],
-    	"Start": 1542111395000,
-    	"End": "now"
+    	"m3tric": "cpu"
 	}`
 	_, err := validateRequest([]byte(requestString))
 	suite.Error(err)
-	expectedErrorMessage := "Request object is missing 'metric' field"
+	expectedErrorMessage := "Request must not contain unsupported fields: m3tric"
 	suite.Equal(expectedErrorMessage, err.Error())
 }
 
@@ -77,14 +74,16 @@ func (suite *QueryTestSuite) TestValidateRequestMinimal() {
 	suite.Equal(expected, req)
 }
 
-func (suite *QueryTestSuite) TestValidateRequestMissingMetric() {
+func (suite *QueryTestSuite) TestValidateRequestWithoutMetric() {
 	requestString := `{
     	"end_time": "1542111395000"
 	}`
-	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
-	expectedErrorMessage := "Request object is missing 'metric' field"
-	suite.Equal(expectedErrorMessage, err.Error())
+	expected := &request{
+		EndTime: "1542111395000",
+	}
+	req, err := validateRequest([]byte(requestString))
+	suite.NoError(err)
+	suite.Equal(expected, req)
 }
 
 func (suite *QueryTestSuite) TestValidateRequestIntAggregators() {
