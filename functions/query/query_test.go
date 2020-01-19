@@ -108,6 +108,17 @@ func (suite *QueryTestSuite) TestValidateRequestUnsupportedField() {
 	suite.Equal(expectedErrorMessage, err.Error())
 }
 
+func (suite *QueryTestSuite) TestValidateRequestLastAndEndTime() {
+	requestString := `{
+    	"last": "123",
+		"end_time": "1542111395000"
+	}`
+	_, err := validateRequest([]byte(requestString))
+	suite.Error(err)
+	expectedErrorMessage := "'last' field must be used in conjunction with 'start_time' or 'end_time'"
+	suite.Equal(expectedErrorMessage, err.Error())
+}
+
 func TestQueryTestSuite(t *testing.T) {
 	suite.Run(t, new(QueryTestSuite))
 }

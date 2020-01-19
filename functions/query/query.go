@@ -186,6 +186,9 @@ func validateRequest(eventBody []byte) (*request, error) {
 	if err != nil {
 		return nil, err
 	}
+	if request.Last != "" && (request.StartTime != "" || request.EndTime != "") {
+		return nil, errors.New("'last' field must be used in conjunction with 'start_time' or 'end_time'")
+	}
 	aggregators, ok := requestMap["aggregators"]
 	delete(requestMap, "aggregators")
 	if ok {
@@ -208,7 +211,7 @@ func validateOptionalString(requestMap map[string]interface{}, fieldName string)
 	value, ok := requestMap[fieldName]
 	delete(requestMap, fieldName)
 	if !ok {
-		value = ""
+		return "", nil
 	}
 	str, ok := value.(string)
 	if !ok {
