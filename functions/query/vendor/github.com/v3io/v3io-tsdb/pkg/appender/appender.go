@@ -122,7 +122,9 @@ type MetricsCache struct {
 	updatesComplete chan int
 	newUpdates      chan int
 
-	lastMetric     uint64
+	lastMetric uint64
+
+	// TODO: consider switching to synch.Map (https://golang.org/pkg/sync/#Map)
 	cacheMetricMap map[cacheKey]*MetricState // TODO: maybe use hash as key & combine w ref
 	cacheRefMap    map[uint64]*MetricState   // TODO: maybe turn to list + free list, periodically delete old matrics
 
@@ -218,6 +220,15 @@ func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint6
 		return 0, err
 	}
 
+	isValueVariantType := false
+	// If the value is not of Float type assume it's variant type.
+	switch v.(type) {
+	case int, int64, float64, float32:
+		isValueVariantType = false
+	default:
+		isValueVariantType = true
+	}
+
 	name, key, hash := lset.GetKey()
 	err = utils.IsValidMetricName(name)
 	if err != nil {
@@ -238,11 +249,9 @@ func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint6
 				aggrMetrics = append(aggrMetrics, aggrMetric)
 			}
 		}
-		metric = &MetricState{Lset: lset, key: key, name: name, hash: hash, aggrs: aggrMetrics}
-		// if the (first) value is not float, use variant encoding, TODO: test w schema
-		if _, ok := v.(float64); !ok {
-			metric.isVariant = true
-		}
+		metric = &MetricState{Lset: lset, key: key, name: name, hash: hash,
+			aggrs: aggrMetrics, isVariant: isValueVariantType}
+
 		metric.store = NewChunkStore(mc.logger, lset.LabelNames(), false)
 		mc.addMetric(hash, name, metric)
 	} else {
@@ -251,6 +260,18 @@ func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint6
 
 	err = metric.error()
 	metric.setError(nil)
+
+	if isValueVariantType != metric.isVariant {
+		newValueType := "numeric"
+		if isValueVariantType {
+			newValueType = "string"
+		}
+		existingValueType := "numeric"
+		if metric.isVariant {
+			existingValueType = "string"
+		}
+		return 0, errors.Errorf("Cannot append %v type metric to %v type metric.", newValueType, existingValueType)
+	}
 
 	mc.appendTV(metric, t, v)
 	for _, aggrMetric := range aggrMetrics {
