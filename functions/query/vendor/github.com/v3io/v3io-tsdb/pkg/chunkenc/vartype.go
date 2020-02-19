@@ -108,18 +108,36 @@ func (a *varAppender) Chunk() Chunk {
 }
 
 func (a *varAppender) Append(t int64, v interface{}) {
+
 	if v == nil {
 		a.appendNoValue(t, varTypeNil, varValueNone)
 		return
 	}
 
-	switch val := v.(type) {
+	switch vType := v.(type) {
+	case float64:
+		val := v.(float64)
+		if val == 0 {
+			a.appendNoValue(t, varTypeFloat64, varValueZero)
+			return
+
+		}
+
+		if math.IsNaN(val) {
+			a.appendNoValue(t, varTypeFloat64, varValueNone)
+			return
+		}
+
+		a.appendWithUint(t, varTypeFloat64, math.Float64bits(val))
+
 	case string:
-		a.appendWithValue(t, varTypeString, []byte(val))
+		val := []byte(v.(string))
+		a.appendWithValue(t, varTypeString, val)
 
 	default:
-		a.logger.Error("unsupported type %T of value %v\n", v, v)
+		a.logger.Error("unsupported type %v of value %v\n", vType, v)
 	}
+
 }
 
 func (a *varAppender) appendNoValue(t int64, varType, varVal byte) {
