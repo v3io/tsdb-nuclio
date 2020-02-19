@@ -13,7 +13,6 @@ import (
 	"github.com/v3io/v3io-tsdb/internal/pkg/performance"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
 	"github.com/v3io/v3io-tsdb/pkg/config"
-	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 	. "github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb/tsdbtest/testutils"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
@@ -25,59 +24,12 @@ const DaysInMillis = 24 * HoursInMillis
 
 type DataPoint struct {
 	Time  int64
-	Value interface{}
+	Value float64
 }
-
-func (dp DataPoint) Equals(other DataPoint) bool {
-	if &dp.Time != &other.Time {
-		return true
-	}
-	if dp.Time != other.Time {
-		return false
-	}
-
-	switch dpVal := dp.Value.(type) {
-	case float64:
-		switch oVal := other.Value.(type) {
-		case float64:
-			return dpVal == oVal
-		case int:
-			return dpVal == float64(oVal)
-		default:
-			return false
-		}
-	case int:
-		switch oVal := other.Value.(type) {
-		case float64:
-			return float64(dpVal) == oVal
-		case int:
-			return dpVal == oVal
-		default:
-			return false
-		}
-	case string:
-		switch oVal := other.Value.(type) {
-		case string:
-			return oVal == dpVal
-		case float64:
-			soVal := fmt.Sprintf("%f", oVal)
-			return dpVal == soVal
-		case int:
-			soVal := fmt.Sprintf("%d", oVal)
-			return dpVal == soVal
-		default:
-			return false
-		}
-	default:
-		return false
-	}
-}
-
 type Metric struct {
-	Name          string
-	Labels        utils.Labels
-	Data          []DataPoint
-	ExpectedCount *int
+	Name   string
+	Labels utils.Labels
+	Data   []DataPoint
 }
 type TimeSeries []Metric
 
@@ -148,8 +100,7 @@ func DeleteTSDB(t testing.TB, v3ioConfig *config.V3ioConfig) {
 		t.Fatalf("Failed to create an adapter. Reason: %s", err)
 	}
 
-	now := time.Now().Unix() * 1000 // Current time (now) in milliseconds
-	if err := adapter.DeleteDB(true, true, 0, now); err != nil {
+	if err := adapter.DeleteDB(DeleteParams{DeleteAll: true, IgnoreErrors: true}); err != nil {
 		t.Fatalf("Failed to delete a TSDB instance (table) on teardown. Reason: %s", err)
 	}
 }
@@ -175,13 +126,7 @@ func tearDown(t testing.TB, v3ioConfig *config.V3ioConfig, testParams TestParams
 
 func SetUp(t testing.TB, testParams TestParams) func() {
 	v3ioConfig := testParams.V3ioConfig()
-
-	if overrideTableName, ok := testParams["override_test_name"]; ok {
-		v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%v", overrideTableName))
-	} else {
-		v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%s-%d", t.Name(), time.Now().Nanosecond()))
-	}
-
+	v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%s-%d", t.Name(), time.Now().Nanosecond()))
 	CreateTestTSDB(t, v3ioConfig)
 
 	// Measure performance
@@ -271,17 +216,12 @@ func ValidateCountOfSamples(t testing.TB, adapter *V3ioAdapter, metricName strin
 		stepSize = queryAggStep
 	}
 
-	qry, err := adapter.QuerierV2()
+	qry, err := adapter.Querier(nil, startTimeMs-stepSize, endTimeMs)
 	if err != nil {
 		t.Fatal(err, "Failed to create a Querier instance.")
 	}
 
-	selectParams := &pquerier.SelectParams{From: startTimeMs - stepSize,
-		To:        endTimeMs,
-		Functions: "count",
-		Step:      stepSize,
-		Filter:    fmt.Sprintf("starts(__name__, '%v')", metricName)}
-	set, err := qry.Select(selectParams)
+	set, err := qry.Select("", "count", stepSize, fmt.Sprintf("starts(__name__, '%v')", metricName))
 
 	var actualCount int
 	for set.Next() {
@@ -322,7 +262,7 @@ func ValidateRawData(t testing.TB, adapter *V3ioAdapter, metricName string, star
 
 	for set.Next() {
 		// Start over for each label set
-		var lastDataPoint *DataPoint = nil
+		var lastDataPoint = &DataPoint{Time: -1, Value: -1.0}
 
 		if set.Err() != nil {
 			t.Fatal(set.Err(), "Failed to get the next element from a result set.")
@@ -337,16 +277,12 @@ func ValidateRawData(t testing.TB, adapter *V3ioAdapter, metricName string, star
 			currentTime, currentValue := iter.At()
 			currentDataPoint := &DataPoint{Time: currentTime, Value: currentValue}
 
-			if lastDataPoint != nil {
-				switch dataType := lastDataPoint.Value.(type) {
-				case string, float64, int, int64:
-					// Note: We cast float to integer to eliminate the risk of a precision error
-					if !isValid(lastDataPoint, currentDataPoint) {
-						t.Fatalf("The raw-data consistency check failed: metric name='%s'\n\tisValid(%v, %v) == false",
-							metricName, lastDataPoint, currentDataPoint)
-					}
-				default:
-					t.Fatalf("Got value of unsupported data type: %T", dataType)
+			if lastDataPoint.Value >= 0 {
+				// Note: We cast float to integer to eliminate the risk of a
+				// precision error
+				if !isValid(lastDataPoint, currentDataPoint) {
+					t.Fatalf("The raw-data consistency check failed: metric name='%s'\n\tisValid(%v, %v) == false",
+						metricName, lastDataPoint, currentDataPoint)
 				}
 			}
 			lastDataPoint = currentDataPoint
