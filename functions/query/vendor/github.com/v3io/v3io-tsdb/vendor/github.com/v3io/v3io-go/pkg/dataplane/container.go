@@ -18,6 +18,7 @@ package v3io
 
 // A container interface allows perform actions against a container
 type Container interface {
+
 	//
 	// Container
 	//
@@ -76,7 +77,7 @@ type Container interface {
 	PutItem(*PutItemInput, interface{}, chan *Response) (*Request, error)
 
 	// PutItemSync
-	PutItemSync(*PutItemInput) (*Response, error)
+	PutItemSync(*PutItemInput) error
 
 	// PutItems
 	PutItems(*PutItemsInput, interface{}, chan *Response) (*Request, error)
@@ -88,7 +89,7 @@ type Container interface {
 	UpdateItem(*UpdateItemInput, interface{}, chan *Response) (*Request, error)
 
 	// UpdateItemSync
-	UpdateItemSync(*UpdateItemInput) (*Response, error)
+	UpdateItemSync(*UpdateItemInput) error
 
 	//
 	// Stream
