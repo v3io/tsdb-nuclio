@@ -31,18 +31,9 @@ import (
 //
 
 type NewContextInput struct {
-	Client            *fasthttp.Client
-	NumWorkers        int
-	RequestChanLen    int
-	InactivityTimeout time.Duration
-}
-
-type StopContextInput struct {
-	Reason string
-}
-
-type StopContextOutput struct {
-	WorkerIndex int
+	Client         *fasthttp.Client
+	NumWorkers     int
+	RequestChanLen int
 }
 
 type NewSessionInput struct {
@@ -201,12 +192,6 @@ type PutItemInput struct {
 	UpdateMode string
 }
 
-type PutItemOutput struct {
-	DataPlaneInput
-	MtimeSecs int
-	MtimeNSecs int
-}
-
 type PutItemsInput struct {
 	DataPlaneInput
 	Path      string
@@ -227,12 +212,6 @@ type UpdateItemInput struct {
 	Expression *string
 	Condition  string
 	UpdateMode string
-}
-
-type UpdateItemOutput struct {
-	DataPlaneInput
-	MtimeSecs int
-	MtimeNSecs int
 }
 
 type GetItemInput struct {
