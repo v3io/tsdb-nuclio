@@ -51,7 +51,7 @@ github.com/pkg/errors
 github.com/pmezard/go-difflib/difflib
 # github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 github.com/rcrowley/go-metrics
-# github.com/russross/blackfriday v1.5.2
+# github.com/russross/blackfriday v1.5.2+incompatible
 github.com/russross/blackfriday
 # github.com/spf13/cobra v0.0.3
 github.com/spf13/cobra
