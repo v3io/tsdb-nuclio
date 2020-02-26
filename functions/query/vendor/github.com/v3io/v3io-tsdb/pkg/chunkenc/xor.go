@@ -173,18 +173,7 @@ func (a *xorAppender) Chunk() Chunk {
 func (a *xorAppender) Append(t int64, vvar interface{}) {
 	var tDelta uint64
 	num := *a.samples
-
-	var v float64
-	switch typedValue := vvar.(type) {
-	case int:
-		v = float64(typedValue)
-	case float64:
-		v = typedValue
-	default:
-		a.logger.Warn("Discarding sample {time: %d, value: %v}, as it's value is of incompatible data type. "+
-			"Reason: expected 'float' actual '%T'.", t, vvar, vvar)
-		return
-	}
+	v := vvar.(float64)
 
 	// Do not append if sample is too old.
 	if t < a.t {

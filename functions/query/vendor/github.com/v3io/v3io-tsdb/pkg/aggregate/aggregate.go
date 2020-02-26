@@ -92,6 +92,7 @@ func SchemaFieldFromString(aggregates []string, col string) ([]config.SchemaFiel
 				for _, val := range aggrToSchemaField {
 					fieldList = append(fieldList, getAggrFullName(val, col))
 				}
+				return fieldList, nil
 			} else {
 				field, ok := aggrToSchemaField[trimmed]
 				if !ok {
@@ -154,7 +155,7 @@ func AggregatesFromStringListWithCount(split []string) (AggrType, []AggrType, er
 
 	var hasAggregates bool
 	for _, s := range split {
-		aggr, err := FromString(s)
+		aggr, err := AggregateFromString(s)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -172,7 +173,7 @@ func AggregatesFromStringListWithCount(split []string) (AggrType, []AggrType, er
 	return aggrMask, aggrList, nil
 }
 
-func FromString(aggrString string) (AggrType, error) {
+func AggregateFromString(aggrString string) (AggrType, error) {
 	trimmed := strings.TrimSpace(aggrString)
 	if trimmed == "" {
 		return 0, nil
@@ -294,7 +295,7 @@ func IsCountAggregate(aggr AggrType) bool { return aggr == aggrTypeCount }
 
 func HasAggregates(mask AggrType) bool { return mask != aggrTypeNone }
 
-func MaskToString(mask AggrType) string {
+func AggregateMaskToString(mask AggrType) string {
 	var output strings.Builder
 	aggCount := 0
 	for _, raw := range rawAggregates {

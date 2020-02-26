@@ -29,12 +29,7 @@ func (i Item) GetField(name string) interface{} {
 }
 
 func (i Item) GetFieldInt(name string) (int, error) {
-	fieldValue, fieldFound := i[name]
-	if !fieldFound {
-		return 0, v3ioerrors.ErrNotFound
-	}
-
-	switch typedField := fieldValue.(type) {
+	switch typedField := i[name].(type) {
 	case int:
 		return typedField, nil
 	case float64:
@@ -47,12 +42,7 @@ func (i Item) GetFieldInt(name string) (int, error) {
 }
 
 func (i Item) GetFieldString(name string) (string, error) {
-	fieldValue, fieldFound := i[name]
-	if !fieldFound {
-		return "", v3ioerrors.ErrNotFound
-	}
-
-	switch typedField := fieldValue.(type) {
+	switch typedField := i[name].(type) {
 	case int:
 		return strconv.Itoa(typedField), nil
 	case float64:
@@ -61,22 +51,5 @@ func (i Item) GetFieldString(name string) (string, error) {
 		return typedField, nil
 	default:
 		return "", v3ioerrors.ErrInvalidTypeConversion
-	}
-}
-
-func (i Item) GetFieldUint64(name string) (uint64, error) {
-	fieldValue, fieldFound := i[name]
-	if !fieldFound {
-		return 0, v3ioerrors.ErrNotFound
-	}
-
-	switch typedField := fieldValue.(type) {
-	// TODO: properly handle uint64
-	case int:
-		return uint64(typedField), nil
-	case uint64:
-		return typedField, nil
-	default:
-		return 0, v3ioerrors.ErrInvalidTypeConversion
 	}
 }

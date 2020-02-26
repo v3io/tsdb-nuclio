@@ -121,11 +121,11 @@ Arguments:
 func (qc *queryCommandeer) query() error {
 
 	if qc.name == "" && qc.filter == "" {
-		return errors.New("the query command must receive either a metric-name paramter (<metrics>) or a query filter (set via the -f|--filter flag)")
+		return errors.New("The query command must receive either a metric-name paramter (<metrics>) or a query filter (set via the -f|--filter flag).")
 	}
 
 	if qc.last != "" && (qc.from != "" || qc.to != "") {
-		return errors.New("the -l|--last flag cannot be set together with the -b|--begin and/or -e|--end flags")
+		return errors.New("The -l|--last flag cannot be set together with the -b|--begin and/or -e|--end flags.")
 	}
 
 	// Initialize parameters and adapter
@@ -172,8 +172,9 @@ func (qc *queryCommandeer) query() error {
 
 	if !qc.oldQuerier {
 		return qc.newQuery(from, to, step)
+	} else {
+		return qc.oldQuery(from, to, step)
 	}
-	return qc.oldQuery(from, to, step)
 }
 
 func (qc *queryCommandeer) newQuery(from, to, step int64) error {

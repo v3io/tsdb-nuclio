@@ -67,7 +67,7 @@ func (c *container) PutItem(putItemInput *v3io.PutItemInput,
 }
 
 // PutItemSync
-func (c *container) PutItemSync(putItemInput *v3io.PutItemInput) error {
+func (c *container) PutItemSync(putItemInput *v3io.PutItemInput) (*v3io.Response, error) {
 	c.populateInputFields(&putItemInput.DataPlaneInput)
 	return c.session.context.PutItemSync(putItemInput)
 }
@@ -95,7 +95,7 @@ func (c *container) UpdateItem(updateItemInput *v3io.UpdateItemInput,
 }
 
 // UpdateItemSync
-func (c *container) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) error {
+func (c *container) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.Response, error) {
 	c.populateInputFields(&updateItemInput.DataPlaneInput)
 	return c.session.context.UpdateItemSync(updateItemInput)
 }
@@ -176,20 +176,6 @@ func (c *container) CreateStream(createStreamInput *v3io.CreateStreamInput, cont
 func (c *container) CreateStreamSync(createStreamInput *v3io.CreateStreamInput) error {
 	c.populateInputFields(&createStreamInput.DataPlaneInput)
 	return c.session.context.CreateStreamSync(createStreamInput)
-}
-
-// DescribeStream
-func (c *container) DescribeStream(describeStreamInput *v3io.DescribeStreamInput,
-	context interface{},
-	responseChan chan *v3io.Response) (*v3io.Request, error) {
-	c.populateInputFields(&describeStreamInput.DataPlaneInput)
-	return c.session.context.DescribeStream(describeStreamInput, context, responseChan)
-}
-
-// DescribeStreamSync
-func (c *container) DescribeStreamSync(describeStreamInput *v3io.DescribeStreamInput) (*v3io.Response, error) {
-	c.populateInputFields(&describeStreamInput.DataPlaneInput)
-	return c.session.context.DescribeStreamSync(describeStreamInput)
 }
 
 // DeleteStream

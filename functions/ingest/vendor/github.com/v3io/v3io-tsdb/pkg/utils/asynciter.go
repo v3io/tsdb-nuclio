@@ -189,15 +189,9 @@ func (ic *AsyncItemsCursor) processResponse() error {
 
 	// until IGZ-2.0 there is a bug in Nginx regarding range-scan, the following code is a mitigation for it.
 	if *conf.DisableNginxMitigation {
-		err := ic.sendNextGetItemsOld(resp)
-		if err != nil {
-			return err
-		}
+		ic.sendNextGetItemsOld(resp)
 	} else {
-		err := ic.sendNextGetItemsNew(resp)
-		if err != nil {
-			return err
-		}
+		ic.sendNextGetItemsNew(resp)
 	}
 
 	return nil
@@ -250,8 +244,9 @@ func (ic *AsyncItemsCursor) sendNextGetItemsNew(resp *v3io.Response) error {
 				if getItemsResp.Last {
 					ic.lastShards++
 					return nil
+				} else {
+					input.Marker = getItemsResp.NextMarker
 				}
-				input.Marker = getItemsResp.NextMarker
 			}
 		} else {
 			// set next marker

@@ -91,7 +91,7 @@ func (f csvFormatter) Write(out io.Writer, set utils.SeriesSet) error {
 
 }
 
-type simpleJSONFormatter struct {
+type simpleJsonFormatter struct {
 	baseFormatter
 }
 
@@ -100,7 +100,7 @@ const metricTemplate = `
     "datapoints": [%s]
   }`
 
-func (f simpleJSONFormatter) Write(out io.Writer, set utils.SeriesSet) error {
+func (f simpleJsonFormatter) Write(out io.Writer, set utils.SeriesSet) error {
 
 	firstSeries := true
 	output := "["

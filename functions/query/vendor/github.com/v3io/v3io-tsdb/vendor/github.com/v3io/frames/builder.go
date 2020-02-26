@@ -31,7 +31,6 @@ import (
 
 // ColumnBuilder is interface for building columns
 type ColumnBuilder interface {
-	Name() string
 	Append(value interface{}) error
 	At(index int) (interface{}, error)
 	Set(index int, value interface{}) error
@@ -61,10 +60,6 @@ type sliceColumBuilder struct {
 	values  map[int]interface{}
 	deleted map[int]bool
 	index   int // next index for append. TODO: Find a better name
-}
-
-func (b *sliceColumBuilder) Name() string {
-	return b.msg.Name
 }
 
 func (b *sliceColumBuilder) At(index int) (interface{}, error) {
@@ -280,10 +275,6 @@ type labelColumBuilder struct {
 	msg     *pb.Column
 	empty   bool
 	deleted map[int]bool
-}
-
-func (b *labelColumBuilder) Name() string {
-	return b.msg.Name
 }
 
 func (b *labelColumBuilder) At(index int) (interface{}, error) {
