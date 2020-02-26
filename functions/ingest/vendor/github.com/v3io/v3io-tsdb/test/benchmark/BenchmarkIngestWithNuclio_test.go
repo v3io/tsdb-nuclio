@@ -50,7 +50,7 @@ func BenchmarkIngestWithNuclio(b *testing.B) {
 
 	data := nutest.DataBind{
 		Name:      defaultDbName,
-		Url:       v3ioConfig.WebAPIEndpoint,
+		Url:       v3ioConfig.WebApiEndpoint,
 		Container: v3ioConfig.Container,
 		User:      v3ioConfig.Username,
 		Password:  v3ioConfig.Password,

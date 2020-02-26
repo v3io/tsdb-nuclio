@@ -112,7 +112,6 @@ type Frame interface {
 	Slice(start int, end int) (Frame, error) // Slice of Frame
 	IterRows(includeIndex bool) RowIterator  // Iterate over rows
 	IsNull(index int, colName string) bool
-	NullValuesMap() []*pb.NullValuesMap
 }
 
 // RowIterator is an iterator over frame rows
@@ -145,7 +144,6 @@ type FrameIterator interface {
 type FrameAppender interface {
 	Add(frame Frame) error
 	WaitForComplete(timeout time.Duration) error
-	Close()
 }
 
 // ReadRequest is a read/query request

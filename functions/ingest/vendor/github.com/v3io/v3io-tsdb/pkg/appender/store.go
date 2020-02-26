@@ -41,7 +41,7 @@ import (
 const maxLateArrivalInterval = 59 * 60 * 1000 // Max late arrival of 59min
 
 // Create a chunk store with two chunks (current, previous)
-func newChunkStore(logger logger.Logger, labelNames []string, aggrsOnly bool) *chunkStore {
+func NewChunkStore(logger logger.Logger, labelNames []string, aggrsOnly bool) *chunkStore {
 	store := chunkStore{
 		logger:  logger,
 		lastTid: -1,
@@ -404,7 +404,7 @@ func (cs *chunkStore) writeChunks(mc *MetricsCache, metric *MetricState) (hasPen
 			if len(cs.pending) > 0 {
 				mc.metricQueue.Push(metric)
 			}
-			hasPendingUpdates = false
+			hasPendingUpdates, err = false, nil
 			return
 		}
 
@@ -418,25 +418,17 @@ func (cs *chunkStore) writeChunks(mc *MetricsCache, metric *MetricState) (hasPen
 
 			var encodingExpr string
 			if !cs.isAggr() {
-				encodingExpr = fmt.Sprintf("%s='%d'; ", config.EncodingAttrName, activeChunk.appender.Encoding())
+				encodingExpr = fmt.Sprintf("%v='%d'; ", config.EncodingAttrName, activeChunk.appender.Encoding())
 			}
-			lsetExpr := fmt.Sprintf("%s='%s'; ", config.LabelSetAttrName, metric.key)
+			lsetExpr := fmt.Sprintf("%v='%s'; ", config.LabelSetAttrName, metric.key)
 			expr = lblexpr + encodingExpr + lsetExpr + expr
 		}
 
-		conditionExpr := ""
-
-		// Only add the condition when adding to a data chunk, not when writing data to label pre-aggregated
-		if activeChunk != nil {
-			// Call the V3IO async UpdateItem method
-			conditionExpr = fmt.Sprintf("NOT exists(%s) OR (exists(%s) AND %s == '%d')",
-				config.EncodingAttrName, config.EncodingAttrName,
-				config.EncodingAttrName, activeChunk.appender.Encoding())
-		}
+		// Call the V3IO async UpdateItem method
 		expr += fmt.Sprintf("%v=%d;", config.MaxTimeAttrName, cs.maxTime) // TODO: use max() expr
 		path := partition.GetMetricPath(metric.name, metric.hash, cs.labelNames, cs.isAggr())
 		request, err := mc.container.UpdateItem(
-			&v3io.UpdateItemInput{Path: path, Expression: &expr, Condition: conditionExpr}, metric, mc.responseChan)
+			&v3io.UpdateItemInput{Path: path, Expression: &expr}, metric, mc.responseChan)
 		if err != nil {
 			mc.logger.ErrorWith("UpdateItem failed", "err", err)
 			hasPendingUpdates = false
@@ -446,7 +438,7 @@ func (cs *chunkStore) writeChunks(mc *MetricsCache, metric *MetricState) (hasPen
 		// will add user data in request)
 		mc.logger.DebugWith("Update-metric expression", "name", metric.name, "key", metric.key, "expr", expr, "reqid", request.ID)
 
-		hasPendingUpdates = true
+		hasPendingUpdates, err = true, nil
 		cs.performanceReporter.UpdateHistogram("WriteChunksSizeHistogram", int64(pendingSamplesCount))
 		return
 	})
@@ -475,7 +467,7 @@ func (cs *chunkStore) appendExpression(chunk *attrAppender) string {
 		chunk.state |= chunkStateWriting
 
 		expr := ""
-		idx, err := chunk.partition.TimeToChunkID(chunk.chunkMint)
+		idx, err := chunk.partition.TimeToChunkId(chunk.chunkMint)
 		if err != nil {
 			return ""
 		}
