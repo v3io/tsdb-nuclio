@@ -31,18 +31,9 @@ import (
 //
 
 type NewContextInput struct {
-	Client            *fasthttp.Client
-	NumWorkers        int
-	RequestChanLen    int
-	InactivityTimeout time.Duration
-}
-
-type StopContextInput struct {
-	Reason string
-}
-
-type StopContextOutput struct {
-	WorkerIndex int
+	Client         *fasthttp.Client
+	NumWorkers     int
+	RequestChanLen int
 }
 
 type NewSessionInput struct {
