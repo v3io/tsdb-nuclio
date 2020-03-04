@@ -65,7 +65,7 @@ github.com/stretchr/testify/require
 # github.com/v3io/frames v0.6.8-v0.9.11
 github.com/v3io/frames
 github.com/v3io/frames/pb
-# github.com/v3io/v3io-go v0.0.7-0.20200216132233-3b52a325296d
+# github.com/v3io/v3io-go v0.0.7-0.20200216132233-3b52a325296d => github.com/v3io/v3io-go v0.0.6-0.20200228104949-c1aa65089012
 github.com/v3io/v3io-go/pkg/dataplane
 github.com/v3io/v3io-go/pkg/errors
 github.com/v3io/v3io-go/pkg/dataplane/http
