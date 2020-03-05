@@ -32,12 +32,24 @@ import (
 // TODO: Request should have a global pool
 var requestID uint64
 
+var ErrContextStopped = errors.New("Context stopped")
+
+type inactivityMonitorRequest int
+
+const (
+	inactivityMonitorRequestReset inactivityMonitorRequest = 0
+	inactivityMonitorRequestStop  inactivityMonitorRequest = 1
+)
+
 type context struct {
-	logger           logger.Logger
-	requestChan      chan *v3io.Request
-	httpClient       *fasthttp.Client
-	clusterEndpoints []string
-	numWorkers       int
+	logger                   logger.Logger
+	requestChan              chan *v3io.Request
+	httpClient               *fasthttp.Client
+	clusterEndpoints         []string
+	numWorkers               int
+	inactivityMonitorTimer   *time.Timer
+	inactivityMonitorChan    chan inactivityMonitorRequest
+	inactivityMonitorTimeout time.Duration
 }
 
 func NewClient(tlsConfig *tls.Config, dialTimeout time.Duration) *fasthttp.Client {
@@ -48,6 +60,7 @@ func NewClient(tlsConfig *tls.Config, dialTimeout time.Duration) *fasthttp.Clien
 	if dialTimeout == 0 {
 		dialTimeout = fasthttp.DefaultDialTimeout
 	}
+
 	dialFunction := func(addr string) (net.Conn, error) {
 		return fasthttp.DialTimeout(addr, dialTimeout)
 	}
@@ -74,17 +87,38 @@ func NewContext(parentLogger logger.Logger, client *fasthttp.Client, newContextI
 	}
 
 	newContext := &context{
-		logger:      parentLogger.GetChild("context.http"),
-		httpClient:  client,
-		requestChan: make(chan *v3io.Request, requestChanLen),
-		numWorkers:  numWorkers,
+		logger:                   parentLogger.GetChild("context.http"),
+		httpClient:               client,
+		requestChan:              make(chan *v3io.Request, requestChanLen),
+		numWorkers:               numWorkers,
+		inactivityMonitorTimeout: newContextInput.InactivityTimeout,
 	}
 
 	for workerIndex := 0; workerIndex < numWorkers; workerIndex++ {
 		go newContext.workerEntry(workerIndex)
 	}
 
+	if newContext.inactivityMonitorTimeout != 0 {
+		newContext.inactivityMonitorChan = make(chan inactivityMonitorRequest, newContext.numWorkers)
+		newContext.inactivityMonitorTimer = time.NewTimer(newContext.inactivityMonitorTimeout)
+
+		go newContext.inactivityMonitorEntry()
+	}
+
+	newContext.logger.DebugWith("Created context",
+		"numWorkers", numWorkers,
+		"inactivityMonitorTimeout", newContextInput.InactivityTimeout)
+
 	return newContext, nil
+}
+
+// stops a context
+func (c *context) Stop(timeout *time.Duration) error {
+	if c.inactivityMonitorTimer != nil {
+		c.inactivityMonitorChan <- inactivityMonitorRequestStop
+	}
+
+	return c.stop("User requested stop", timeout)
 }
 
 // create a new session
@@ -324,9 +358,6 @@ func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) (*v3io.Response, 
 		putItemInput.Condition,
 		putItemHeaders,
 		body)
-	if err != nil {
-		return nil, err
-	}
 
 	mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
 	if err != nil {
@@ -417,9 +448,6 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.R
 			updateItemInput.Condition,
 			putItemHeaders,
 			body)
-		if err != nil {
-			return nil, err
-		}
 
 		mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
 		if err != nil {
@@ -436,9 +464,6 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.R
 			updateItemInput.Condition,
 			updateItemHeaders,
 			updateItemInput.UpdateMode)
-		if err != nil {
-			return nil, err
-		}
 
 		mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
 		if err != nil {
@@ -793,7 +818,6 @@ func (c *context) updateItemWithExpression(dataPlaneInput *v3io.DataPlaneInput,
 		body["UpdateMode"] = updateMode
 	}
 
-
 	if condition != "" {
 		body["ConditionExpression"] = condition
 	}
@@ -850,6 +874,11 @@ func (c *context) sendRequest(dataPlaneInput *v3io.DataPlaneInput,
 	var success bool
 	var statusCode int
 	var err error
+
+	// if there's an inactivity timer, reset it
+	if c.inactivityMonitorTimer != nil {
+		c.inactivityMonitorChan <- inactivityMonitorRequestReset
+	}
 
 	if dataPlaneInput.ContainerName == "" {
 		return nil, errors.New("ContainerName must not be empty")
@@ -1100,63 +1129,79 @@ func (c *context) sendRequestToWorker(input interface{},
 
 func (c *context) workerEntry(workerIndex int) {
 	for {
-		var response *v3io.Response
-		var err error
-
-		// read a request
 		request := <-c.requestChan
 
-		// according to the input type
-		switch typedInput := request.Input.(type) {
-		case *v3io.PutObjectInput:
-			err = c.PutObjectSync(typedInput)
-		case *v3io.GetObjectInput:
-			response, err = c.GetObjectSync(typedInput)
-		case *v3io.DeleteObjectInput:
-			err = c.DeleteObjectSync(typedInput)
-		case *v3io.GetItemInput:
-			response, err = c.GetItemSync(typedInput)
-		case *v3io.GetItemsInput:
-			response, err = c.GetItemsSync(typedInput)
-		case *v3io.PutItemInput:
-			response, err = c.PutItemSync(typedInput)
-		case *v3io.PutItemsInput:
-			response, err = c.PutItemsSync(typedInput)
-		case *v3io.UpdateItemInput:
-			response, err = c.UpdateItemSync(typedInput)
-		case *v3io.CreateStreamInput:
-			err = c.CreateStreamSync(typedInput)
-		case *v3io.DeleteStreamInput:
-			err = c.DeleteStreamSync(typedInput)
-		case *v3io.GetRecordsInput:
-			response, err = c.GetRecordsSync(typedInput)
-		case *v3io.PutRecordsInput:
-			response, err = c.PutRecordsSync(typedInput)
-		case *v3io.SeekShardInput:
-			response, err = c.SeekShardSync(typedInput)
-		case *v3io.GetContainersInput:
-			response, err = c.GetContainersSync(typedInput)
-		case *v3io.GetContainerContentsInput:
-			response, err = c.GetContainerContentsSync(typedInput)
-		default:
-			c.logger.ErrorWith("Got unexpected request type", "type", reflect.TypeOf(request.Input).String())
+		if err := c.handleRequest(workerIndex, request); err != nil {
+			if err == ErrContextStopped {
+				return
+			}
 		}
-
-		// TODO: have the sync interfaces somehow use the pre-allocated response
-		if response != nil {
-			request.RequestResponse.Response = *response
-		}
-
-		response = &request.RequestResponse.Response
-
-		response.ID = request.ID
-		response.Error = err
-		response.RequestResponse = request.RequestResponse
-		response.Context = request.Context
-
-		// write to response channel
-		request.ResponseChan <- &request.RequestResponse.Response
 	}
+}
+
+func (c *context) handleRequest(workerIndex int, request *v3io.Request) error {
+	var response *v3io.Response
+	var err error
+
+	// according to the input type
+	switch typedInput := request.Input.(type) {
+	case *v3io.PutObjectInput:
+		err = c.PutObjectSync(typedInput)
+	case *v3io.GetObjectInput:
+		response, err = c.GetObjectSync(typedInput)
+	case *v3io.DeleteObjectInput:
+		err = c.DeleteObjectSync(typedInput)
+	case *v3io.GetItemInput:
+		response, err = c.GetItemSync(typedInput)
+	case *v3io.GetItemsInput:
+		response, err = c.GetItemsSync(typedInput)
+	case *v3io.PutItemInput:
+		response, err = c.PutItemSync(typedInput)
+	case *v3io.PutItemsInput:
+		response, err = c.PutItemsSync(typedInput)
+	case *v3io.UpdateItemInput:
+		response, err = c.UpdateItemSync(typedInput)
+	case *v3io.CreateStreamInput:
+		err = c.CreateStreamSync(typedInput)
+	case *v3io.DeleteStreamInput:
+		err = c.DeleteStreamSync(typedInput)
+	case *v3io.GetRecordsInput:
+		response, err = c.GetRecordsSync(typedInput)
+	case *v3io.PutRecordsInput:
+		response, err = c.PutRecordsSync(typedInput)
+	case *v3io.SeekShardInput:
+		response, err = c.SeekShardSync(typedInput)
+	case *v3io.GetContainersInput:
+		response, err = c.GetContainersSync(typedInput)
+	case *v3io.GetContainerContentsInput:
+		response, err = c.GetContainerContentsSync(typedInput)
+	case *v3io.StopContextInput:
+		response = &v3io.Response{
+			Output: &v3io.StopContextOutput{
+				WorkerIndex: workerIndex,
+			},
+		}
+		err = ErrContextStopped
+	default:
+		c.logger.ErrorWith("Got unexpected request type", "type", reflect.TypeOf(request.Input).String())
+	}
+
+	// TODO: have the sync interfaces somehow use the pre-allocated response
+	if response != nil {
+		request.RequestResponse.Response = *response
+	}
+
+	response = &request.RequestResponse.Response
+
+	response.ID = request.ID
+	response.Error = err
+	response.RequestResponse = request.RequestResponse
+	response.Context = request.Context
+
+	// write to response channel
+	request.ResponseChan <- &request.RequestResponse.Response
+
+	return err
 }
 
 func readAllCapnpMessages(reader io.Reader) []*capnp.Message {
@@ -1373,6 +1418,79 @@ func (c *context) getItemsParseCAPNPResponse(response *v3io.Response, withWildca
 		getItemsOutput.Items = append(getItemsOutput.Items, ditem)
 	}
 	return &getItemsOutput, nil
+}
+
+func (c *context) inactivityMonitorEntry() {
+	c.logger.DebugWith("Inactivity monitor starting",
+		"timeout", c.inactivityMonitorTimeout)
+
+	inactivityMonitorTimerExpired := false
+
+	for !inactivityMonitorTimerExpired {
+		select {
+		case request := <-c.inactivityMonitorChan:
+			switch request {
+			case inactivityMonitorRequestStop:
+				c.logger.Debug("Inactivity monitor requested to stop")
+				return
+			case inactivityMonitorRequestReset:
+				c.inactivityMonitorTimer.Reset(c.inactivityMonitorTimeout)
+			}
+
+		case <-c.inactivityMonitorTimer.C:
+			inactivityMonitorTimerExpired = true
+		}
+	}
+
+	// force stop
+	c.stop("Inactivity timout expired", nil) // nolint: errcheck
+}
+
+func (c *context) stop(reason string, timeout *time.Duration) error {
+	var workerStoppedChan chan *v3io.Response
+
+	timeoutStr := "None"
+	if timeout != nil {
+		timeoutStr = timeout.String()
+	}
+
+	c.logger.DebugWith("Stopping context",
+		"reason", reason,
+		"timeout", timeoutStr)
+
+	workerStoppedChan = make(chan *v3io.Response, c.numWorkers)
+
+	// it's guaranteed that a single worker will not read two messages from the queue, so
+	// each worker should receive a single stop request
+	for workerIdx := 0; workerIdx < c.numWorkers; workerIdx++ {
+		_, err := c.sendRequestToWorker(&v3io.StopContextInput{Reason: reason},
+			nil,
+			workerStoppedChan)
+
+		if err != nil {
+			return errors.Wrap(err, "Failed to send request to worker")
+		}
+	}
+
+	// if timeout is set, wait for all workers to stop
+	if timeout != nil {
+		deadline := time.After(*timeout)
+		workersStopped := 0
+
+		// while not all workers stopped, wait for them to stop
+		for workersStopped < c.numWorkers {
+			select {
+			case <-workerStoppedChan:
+				workersStopped++
+			case <-deadline:
+				return errors.New("Timed out waiting for context to stop")
+			}
+		}
+	}
+
+	c.logger.DebugWith("Context stopped")
+
+	return nil
 }
 
 // parsing the mtime from a header of the form `__mtime_secs==1581605100 and __mtime_nsecs==498349956`
