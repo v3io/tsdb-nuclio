@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,7 +73,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	seriesSet, err := querier.Select(params)
 	if err != nil {
 		if e, hasErrorCode := err.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
-			return nil, nuclio.WrapErrBadRequest(err, context)
+			return nil, nuclio.WrapErrBadRequest(err)
 		}
 		return nil, errors.Wrap(err, "Failed to execute query select")
 	}
