@@ -71,7 +71,7 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 
 	// Select query to get back a series set iterator
 	seriesSet, err := querier.Select(params)
-	if err != nil {
+	if errors.Cause(err) != nil {
 		if e, hasErrorCode := err.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
 			return nil, nuclio.WrapErrBadRequest(err)
 		}
