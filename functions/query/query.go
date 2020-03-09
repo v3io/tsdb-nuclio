@@ -74,10 +74,8 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	if err != nil {
 		cause := errors.Cause(err)
 		if e, hasErrorCode := cause.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
-			context.Logger.Info("WrapErrBadRequest(%v)", err)
 			return nil, nuclio.WrapErrBadRequest(err)
 		}
-		context.Logger.Info("Wrap(%v)", err)
 		return nil, errors.Wrap(err, "Failed to execute query select")
 	}
 
