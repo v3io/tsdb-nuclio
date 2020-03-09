@@ -13,6 +13,8 @@ import (
 	"github.com/v3io/v3io-tsdb/internal/pkg/performance"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
 	"github.com/v3io/v3io-tsdb/pkg/config"
+	"github.com/v3io/v3io-tsdb/pkg/pquerier"
+	// nolint: golint
 	. "github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb/tsdbtest/testutils"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
@@ -24,12 +26,59 @@ const DaysInMillis = 24 * HoursInMillis
 
 type DataPoint struct {
 	Time  int64
-	Value float64
+	Value interface{}
 }
+
+func (dp DataPoint) Equals(other DataPoint) bool {
+	if &dp.Time != &other.Time {
+		return true
+	}
+	if dp.Time != other.Time {
+		return false
+	}
+
+	switch dpVal := dp.Value.(type) {
+	case float64:
+		switch oVal := other.Value.(type) {
+		case float64:
+			return dpVal == oVal
+		case int:
+			return dpVal == float64(oVal)
+		default:
+			return false
+		}
+	case int:
+		switch oVal := other.Value.(type) {
+		case float64:
+			return float64(dpVal) == oVal
+		case int:
+			return dpVal == oVal
+		default:
+			return false
+		}
+	case string:
+		switch oVal := other.Value.(type) {
+		case string:
+			return oVal == dpVal
+		case float64:
+			soVal := fmt.Sprintf("%f", oVal)
+			return dpVal == soVal
+		case int:
+			soVal := fmt.Sprintf("%d", oVal)
+			return dpVal == soVal
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
 type Metric struct {
-	Name   string
-	Labels utils.Labels
-	Data   []DataPoint
+	Name          string
+	Labels        utils.Labels
+	Data          []DataPoint
+	ExpectedCount *int
 }
 type TimeSeries []Metric
 
@@ -100,7 +149,8 @@ func DeleteTSDB(t testing.TB, v3ioConfig *config.V3ioConfig) {
 		t.Fatalf("Failed to create an adapter. Reason: %s", err)
 	}
 
-	if err := adapter.DeleteDB(DeleteParams{DeleteAll: true, IgnoreErrors: true}); err != nil {
+	now := time.Now().Unix() * 1000 // Current time (now) in milliseconds
+	if err := adapter.DeleteDB(true, true, 0, now); err != nil {
 		t.Fatalf("Failed to delete a TSDB instance (table) on teardown. Reason: %s", err)
 	}
 }
@@ -112,8 +162,8 @@ func CreateTestTSDB(t testing.TB, v3ioConfig *config.V3ioConfig) {
 func CreateTestTSDBWithAggregates(t testing.TB, v3ioConfig *config.V3ioConfig, aggregates string) {
 	schema := testutils.CreateSchema(t, aggregates)
 	if err := CreateTSDB(v3ioConfig, schema); err != nil {
-		v3ioConfigAsJson, _ := json2.MarshalIndent(v3ioConfig, "", "  ")
-		t.Fatalf("Failed to create a TSDB instance (table). Reason: %v\nConfiguration:\n%s", err, string(v3ioConfigAsJson))
+		v3ioConfigAsJSON, _ := json2.MarshalIndent(v3ioConfig, "", "  ")
+		t.Fatalf("Failed to create a TSDB instance (table). Reason: %v\nConfiguration:\n%s", err, string(v3ioConfigAsJSON))
 	}
 }
 
@@ -126,7 +176,13 @@ func tearDown(t testing.TB, v3ioConfig *config.V3ioConfig, testParams TestParams
 
 func SetUp(t testing.TB, testParams TestParams) func() {
 	v3ioConfig := testParams.V3ioConfig()
-	v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%s-%d", t.Name(), time.Now().Nanosecond()))
+
+	if overrideTableName, ok := testParams["override_test_name"]; ok {
+		v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%v", overrideTableName))
+	} else {
+		v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%s-%d", t.Name(), time.Now().Nanosecond()))
+	}
+
 	CreateTestTSDB(t, v3ioConfig)
 
 	// Measure performance
@@ -134,9 +190,11 @@ func SetUp(t testing.TB, testParams TestParams) func() {
 	if err != nil {
 		t.Fatalf("Unable to initialize the performance metrics reporter. Reason: %v", err)
 	}
+	// nolint: errcheck
 	metricReporter.Start()
 
 	return func() {
+		// nolint: errcheck
 		defer metricReporter.Stop()
 		tearDown(t, v3ioConfig, testParams)
 	}
@@ -152,8 +210,8 @@ func SetUpWithDBConfig(t *testing.T, schema *config.Schema, testParams TestParam
 	v3ioConfig := testParams.V3ioConfig()
 	v3ioConfig.TablePath = PrefixTablePath(fmt.Sprintf("%s-%d", t.Name(), time.Now().Nanosecond()))
 	if err := CreateTSDB(v3ioConfig, schema); err != nil {
-		v3ioConfigAsJson, _ := json2.MarshalIndent(v3ioConfig, "", "  ")
-		t.Fatalf("Failed to create a TSDB instance (table). Reason: %s\nConfiguration:\n%s", err, string(v3ioConfigAsJson))
+		v3ioConfigAsJSON, _ := json2.MarshalIndent(v3ioConfig, "", "  ")
+		t.Fatalf("Failed to create a TSDB instance (table). Reason: %s\nConfiguration:\n%s", err, string(v3ioConfigAsJSON))
 	}
 
 	// Measure performance
@@ -161,9 +219,11 @@ func SetUpWithDBConfig(t *testing.T, schema *config.Schema, testParams TestParam
 	if err != nil {
 		t.Fatalf("Unable to initialize the performance metrics reporter. Error: %v", err)
 	}
+	// nolint: errcheck
 	metricReporter.Start()
 
 	return func() {
+		// nolint: errcheck
 		defer metricReporter.Stop()
 		tearDown(t, v3ioConfig, testParams)
 	}
@@ -192,7 +252,10 @@ func InsertData(t *testing.T, testParams TestParams) *V3ioAdapter {
 			t.Fatalf("Failed to add data to the TSDB appender. Reason: %s", err)
 		}
 		for _, curr := range metric.Data[1:] {
-			appender.AddFast(labels, ref, curr.Time, curr.Value)
+			err := appender.AddFast(labels, ref, curr.Time, curr.Value)
+			if err != nil {
+				t.Fatalf("Failed to AddFast. Reason: %s", err)
+			}
 		}
 
 		if _, err := appender.WaitForCompletion(0); err != nil {
@@ -216,12 +279,17 @@ func ValidateCountOfSamples(t testing.TB, adapter *V3ioAdapter, metricName strin
 		stepSize = queryAggStep
 	}
 
-	qry, err := adapter.Querier(nil, startTimeMs-stepSize, endTimeMs)
+	qry, err := adapter.QuerierV2()
 	if err != nil {
 		t.Fatal(err, "Failed to create a Querier instance.")
 	}
 
-	set, err := qry.Select("", "count", stepSize, fmt.Sprintf("starts(__name__, '%v')", metricName))
+	selectParams := &pquerier.SelectParams{From: startTimeMs - stepSize,
+		To:        endTimeMs,
+		Functions: "count",
+		Step:      stepSize,
+		Filter:    fmt.Sprintf("starts(__name__, '%v')", metricName)}
+	set, _ := qry.Select(selectParams)
 
 	var actualCount int
 	for set.Next() {
@@ -258,11 +326,11 @@ func ValidateRawData(t testing.TB, adapter *V3ioAdapter, metricName string, star
 		t.Fatal(err, "Failed to create a Querier instance.")
 	}
 
-	set, err := qry.Select(metricName, "", 0, "")
+	set, _ := qry.Select(metricName, "", 0, "")
 
 	for set.Next() {
 		// Start over for each label set
-		var lastDataPoint = &DataPoint{Time: -1, Value: -1.0}
+		var lastDataPoint *DataPoint
 
 		if set.Err() != nil {
 			t.Fatal(set.Err(), "Failed to get the next element from a result set.")
@@ -277,12 +345,16 @@ func ValidateRawData(t testing.TB, adapter *V3ioAdapter, metricName string, star
 			currentTime, currentValue := iter.At()
 			currentDataPoint := &DataPoint{Time: currentTime, Value: currentValue}
 
-			if lastDataPoint.Value >= 0 {
-				// Note: We cast float to integer to eliminate the risk of a
-				// precision error
-				if !isValid(lastDataPoint, currentDataPoint) {
-					t.Fatalf("The raw-data consistency check failed: metric name='%s'\n\tisValid(%v, %v) == false",
-						metricName, lastDataPoint, currentDataPoint)
+			if lastDataPoint != nil {
+				switch dataType := lastDataPoint.Value.(type) {
+				case string, float64, int, int64:
+					// Note: We cast float to integer to eliminate the risk of a precision error
+					if !isValid(lastDataPoint, currentDataPoint) {
+						t.Fatalf("The raw-data consistency check failed: metric name='%s'\n\tisValid(%v, %v) == false",
+							metricName, lastDataPoint, currentDataPoint)
+					}
+				default:
+					t.Fatalf("Got value of unsupported data type: %T", dataType)
 				}
 			}
 			lastDataPoint = currentDataPoint
