@@ -29,6 +29,8 @@ github.com/pavius/zap/zapcore
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
+# github.com/rs/xid v1.1.0
+github.com/rs/xid
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
@@ -47,6 +49,7 @@ go.uber.org/multierr
 golang.org/x/net/context
 # golang.org/x/sys v0.0.0-20190222072716-a9d3bda3a223
 golang.org/x/sys/unix
+golang.org/x/sys/windows
 # zombiezen.com/go/capnproto2 v2.17.0+incompatible
 zombiezen.com/go/capnproto2
 zombiezen.com/go/capnproto2/encoding/text

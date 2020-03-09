@@ -32,50 +32,42 @@ import (
 // TODO: Request should have a global pool
 var requestID uint64
 
-var ErrContextStopped = errors.New("Context stopped")
-
-type inactivityMonitorRequest int
-
-const (
-	inactivityMonitorRequestReset inactivityMonitorRequest = 0
-	inactivityMonitorRequestStop  inactivityMonitorRequest = 1
-)
-
 type context struct {
-	logger                   logger.Logger
-	requestChan              chan *v3io.Request
-	httpClient               *fasthttp.Client
-	clusterEndpoints         []string
-	numWorkers               int
-	inactivityMonitorTimer   *time.Timer
-	inactivityMonitorChan    chan inactivityMonitorRequest
-	inactivityMonitorTimeout time.Duration
+	logger           logger.Logger
+	requestChan      chan *v3io.Request
+	httpClient       *fasthttp.Client
+	clusterEndpoints []string
+	numWorkers       int
 }
 
-func NewClient(tlsConfig *tls.Config, dialTimeout time.Duration) *fasthttp.Client {
+type NewClientInput struct {
+	TLSConfig       *tls.Config
+	DialTimeout     time.Duration
+	MaxConnsPerHost int
+}
+
+func NewClient(newClientInput *NewClientInput) *fasthttp.Client {
+	tlsConfig := newClientInput.TLSConfig
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
+	dialTimeout := newClientInput.DialTimeout
 	if dialTimeout == 0 {
 		dialTimeout = fasthttp.DefaultDialTimeout
 	}
-
 	dialFunction := func(addr string) (net.Conn, error) {
 		return fasthttp.DialTimeout(addr, dialTimeout)
 	}
 
 	return &fasthttp.Client{
-		TLSConfig: tlsConfig,
-		Dial:      dialFunction,
+		TLSConfig:       tlsConfig,
+		Dial:            dialFunction,
+		MaxConnsPerHost: newClientInput.MaxConnsPerHost,
 	}
 }
 
-func NewDefaultClient() *fasthttp.Client {
-	return NewClient(nil, 0)
-}
-
-func NewContext(parentLogger logger.Logger, client *fasthttp.Client, newContextInput *v3io.NewContextInput) (v3io.Context, error) {
+func NewContext(parentLogger logger.Logger, newContextInput *NewContextInput) (v3io.Context, error) {
 	requestChanLen := newContextInput.RequestChanLen
 	if requestChanLen == 0 {
 		requestChanLen = 1024
@@ -86,39 +78,23 @@ func NewContext(parentLogger logger.Logger, client *fasthttp.Client, newContextI
 		numWorkers = 8
 	}
 
+	httpClient := newContextInput.HTTPClient
+	if httpClient == nil {
+		httpClient = NewClient(&NewClientInput{})
+	}
+
 	newContext := &context{
-		logger:                   parentLogger.GetChild("context.http"),
-		httpClient:               client,
-		requestChan:              make(chan *v3io.Request, requestChanLen),
-		numWorkers:               numWorkers,
-		inactivityMonitorTimeout: newContextInput.InactivityTimeout,
+		logger:      parentLogger.GetChild("context.http"),
+		httpClient:  httpClient,
+		requestChan: make(chan *v3io.Request, requestChanLen),
+		numWorkers:  numWorkers,
 	}
 
 	for workerIndex := 0; workerIndex < numWorkers; workerIndex++ {
 		go newContext.workerEntry(workerIndex)
 	}
 
-	if newContext.inactivityMonitorTimeout != 0 {
-		newContext.inactivityMonitorChan = make(chan inactivityMonitorRequest, newContext.numWorkers)
-		newContext.inactivityMonitorTimer = time.NewTimer(newContext.inactivityMonitorTimeout)
-
-		go newContext.inactivityMonitorEntry()
-	}
-
-	newContext.logger.DebugWith("Created context",
-		"numWorkers", numWorkers,
-		"inactivityMonitorTimeout", newContextInput.InactivityTimeout)
-
 	return newContext, nil
-}
-
-// stops a context
-func (c *context) Stop(timeout *time.Duration) error {
-	if c.inactivityMonitorTimer != nil {
-		c.inactivityMonitorChan <- inactivityMonitorRequestStop
-	}
-
-	return c.stop("User requested stop", timeout)
 }
 
 // create a new session
@@ -229,8 +205,6 @@ func (c *context) GetItemSync(getItemInput *v3io.GetItemInput) (*v3io.Response, 
 		Item map[string]map[string]interface{}
 	}{}
 
-	c.logger.DebugWithCtx(getItemInput.Ctx, "Body", "body", string(response.Body()))
-
 	// unmarshal the body
 	err = json.Unmarshal(response.Body(), &item)
 	if err != nil {
@@ -304,11 +278,16 @@ func (c *context) GetItemsSync(getItemsInput *v3io.GetItemsInput) (*v3io.Respons
 		return nil, err
 	}
 
+	headers := getItemsHeadersCapnp
+	if getItemsInput.RequestJSONResponse {
+		headers = getItemsHeaders
+	}
+
 	response, err := c.sendRequest(&getItemsInput.DataPlaneInput,
 		"PUT",
 		getItemsInput.Path,
 		"",
-		getItemsHeadersCapnp,
+		headers,
 		marshalledBody,
 		false)
 
@@ -342,7 +321,7 @@ func (c *context) PutItem(putItemInput *v3io.PutItemInput,
 }
 
 // PutItemSync
-func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) (*v3io.Response, error) {
+func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) error {
 	var body map[string]interface{}
 	if putItemInput.UpdateMode != "" {
 		body = map[string]interface{}{
@@ -351,7 +330,7 @@ func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) (*v3io.Response, 
 	}
 
 	// prepare the query path
-	response, err := c.putItem(&putItemInput.DataPlaneInput,
+	_, err := c.putItem(&putItemInput.DataPlaneInput,
 		putItemInput.Path,
 		putItemFunctionName,
 		putItemInput.Attributes,
@@ -359,13 +338,7 @@ func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) (*v3io.Response, 
 		putItemHeaders,
 		body)
 
-	mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
-	if err != nil {
-		return nil, err
-	}
-	response.Output = &v3io.PutItemOutput{MtimeSecs: mtimeSecs, MtimeNSecs: mtimeNSecs}
-
-	return response, err
+	return err
 }
 
 // PutItems
@@ -426,9 +399,8 @@ func (c *context) UpdateItem(updateItemInput *v3io.UpdateItemInput,
 }
 
 // UpdateItemSync
-func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.Response, error) {
+func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) error {
 	var err error
-	var response *v3io.Response
 
 	if updateItemInput.Attributes != nil {
 
@@ -441,7 +413,7 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.R
 			body["UpdateMode"] = updateItemInput.UpdateMode
 		}
 
-		response, err = c.putItem(&updateItemInput.DataPlaneInput,
+		_, err = c.putItem(&updateItemInput.DataPlaneInput,
 			updateItemInput.Path,
 			putItemFunctionName,
 			updateItemInput.Attributes,
@@ -449,31 +421,18 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.R
 			putItemHeaders,
 			body)
 
-		mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
-		if err != nil {
-			return nil, err
-		}
-		response.Output = &v3io.UpdateItemOutput{MtimeSecs: mtimeSecs, MtimeNSecs: mtimeNSecs}
-
 	} else if updateItemInput.Expression != nil {
 
-		response, err = c.updateItemWithExpression(&updateItemInput.DataPlaneInput,
+		_, err = c.updateItemWithExpression(&updateItemInput.DataPlaneInput,
 			updateItemInput.Path,
 			updateItemFunctionName,
 			*updateItemInput.Expression,
 			updateItemInput.Condition,
 			updateItemHeaders,
 			updateItemInput.UpdateMode)
-
-		mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
-		if err != nil {
-			return nil, err
-		}
-		response.Output = &v3io.UpdateItemOutput{MtimeSecs: mtimeSecs, MtimeNSecs: mtimeNSecs}
-
 	}
 
-	return response, err
+	return err
 }
 
 // GetObject
@@ -558,6 +517,40 @@ func (c *context) CreateStreamSync(createStreamInput *v3io.CreateStreamInput) er
 	return err
 }
 
+// DescribeStream
+func (c *context) DescribeStream(describeStreamInput *v3io.DescribeStreamInput,
+	context interface{},
+	responseChan chan *v3io.Response) (*v3io.Request, error) {
+	return c.sendRequestToWorker(describeStreamInput, context, responseChan)
+}
+
+// DescribeStreamSync
+func (c *context) DescribeStreamSync(describeStreamInput *v3io.DescribeStreamInput) (*v3io.Response, error) {
+	response, err := c.sendRequest(&describeStreamInput.DataPlaneInput,
+		http.MethodPut,
+		describeStreamInput.Path,
+		"",
+		describeStreamHeaders,
+		nil,
+		false)
+	if err != nil {
+		return nil, err
+	}
+
+	describeStreamOutput := v3io.DescribeStreamOutput{}
+
+	// unmarshal the body into an ad hoc structure
+	err = json.Unmarshal(response.Body(), &describeStreamOutput)
+	if err != nil {
+		return nil, err
+	}
+
+	// set the output in the response
+	response.Output = &describeStreamOutput
+
+	return response, nil
+}
+
 // DeleteStream
 func (c *context) DeleteStream(deleteStreamInput *v3io.DeleteStreamInput,
 	context interface{},
@@ -615,7 +608,7 @@ func (c *context) SeekShardSync(seekShardInput *v3io.SeekShardInput) (*v3io.Resp
 
 	if seekShardInput.Type == v3io.SeekShardInputTypeSequence {
 		buffer.WriteString(`, "StartingSequenceNumber": `)
-		buffer.WriteString(strconv.Itoa(seekShardInput.StartingSequenceNumber))
+		buffer.WriteString(strconv.FormatUint(seekShardInput.StartingSequenceNumber, 10))
 	} else if seekShardInput.Type == v3io.SeekShardInputTypeTime {
 		buffer.WriteString(`, "TimestampSec": `)
 		buffer.WriteString(strconv.Itoa(seekShardInput.Timestamp))
@@ -695,8 +688,6 @@ func (c *context) PutRecordsSync(putRecordsInput *v3io.PutRecordsInput) (*v3io.R
 	}
 
 	buffer.WriteString(`]}`)
-	str := buffer.String()
-	fmt.Println(str)
 
 	response, err := c.sendRequest(&putRecordsInput.DataPlaneInput,
 		http.MethodPost,
@@ -875,11 +866,6 @@ func (c *context) sendRequest(dataPlaneInput *v3io.DataPlaneInput,
 	var statusCode int
 	var err error
 
-	// if there's an inactivity timer, reset it
-	if c.inactivityMonitorTimer != nil {
-		c.inactivityMonitorChan <- inactivityMonitorRequestReset
-	}
-
 	if dataPlaneInput.ContainerName == "" {
 		return nil, errors.New("ContainerName must not be empty")
 	}
@@ -915,7 +901,7 @@ func (c *context) sendRequest(dataPlaneInput *v3io.DataPlaneInput,
 		"Tx",
 		"uri", uriStr,
 		"method", method,
-		"body", string(request.Body()))
+		"body-length", len(body))
 
 	if dataPlaneInput.Timeout <= 0 {
 		err = c.httpClient.Do(request, response.HTTPResponse)
@@ -929,10 +915,16 @@ func (c *context) sendRequest(dataPlaneInput *v3io.DataPlaneInput,
 
 	statusCode = response.HTTPResponse.StatusCode()
 
-	c.logger.DebugWithCtx(dataPlaneInput.Ctx,
-		"Rx",
-		"statusCode", statusCode,
-		"body", string(response.HTTPResponse.Body()))
+	{
+		contentLength := response.HTTPResponse.Header.ContentLength()
+		if contentLength < 0 {
+			contentLength = 0
+		}
+		c.logger.DebugWithCtx(dataPlaneInput.Ctx,
+			"Rx",
+			"statusCode", statusCode,
+			"Content-Length", contentLength)
+	}
 
 	// did we get a 2xx response?
 	success = statusCode >= 200 && statusCode < 300
@@ -998,6 +990,8 @@ func (c *context) encodeTypedAttributes(attributes map[string]interface{}) (map[
 			return nil, fmt.Errorf("unexpected attribute type for %s: %T", attributeName, reflect.TypeOf(attributeValue))
 		case int:
 			typedAttributes[attributeName]["N"] = strconv.Itoa(value)
+		case uint64:
+			typedAttributes[attributeName]["N"] = strconv.FormatUint(value, 10)
 		case int64:
 			typedAttributes[attributeName]["N"] = strconv.FormatInt(value, 10)
 			// this is a tmp bypass to the fact Go maps Json numbers to float64
@@ -1129,79 +1123,65 @@ func (c *context) sendRequestToWorker(input interface{},
 
 func (c *context) workerEntry(workerIndex int) {
 	for {
+		var response *v3io.Response
+		var err error
+
+		// read a request
 		request := <-c.requestChan
 
-		if err := c.handleRequest(workerIndex, request); err != nil {
-			if err == ErrContextStopped {
-				return
-			}
+		// according to the input type
+		switch typedInput := request.Input.(type) {
+		case *v3io.PutObjectInput:
+			err = c.PutObjectSync(typedInput)
+		case *v3io.GetObjectInput:
+			response, err = c.GetObjectSync(typedInput)
+		case *v3io.DeleteObjectInput:
+			err = c.DeleteObjectSync(typedInput)
+		case *v3io.GetItemInput:
+			response, err = c.GetItemSync(typedInput)
+		case *v3io.GetItemsInput:
+			response, err = c.GetItemsSync(typedInput)
+		case *v3io.PutItemInput:
+			err = c.PutItemSync(typedInput)
+		case *v3io.PutItemsInput:
+			response, err = c.PutItemsSync(typedInput)
+		case *v3io.UpdateItemInput:
+			err = c.UpdateItemSync(typedInput)
+		case *v3io.CreateStreamInput:
+			err = c.CreateStreamSync(typedInput)
+		case *v3io.DescribeStreamInput:
+			response, err = c.DescribeStreamSync(typedInput)
+		case *v3io.DeleteStreamInput:
+			err = c.DeleteStreamSync(typedInput)
+		case *v3io.GetRecordsInput:
+			response, err = c.GetRecordsSync(typedInput)
+		case *v3io.PutRecordsInput:
+			response, err = c.PutRecordsSync(typedInput)
+		case *v3io.SeekShardInput:
+			response, err = c.SeekShardSync(typedInput)
+		case *v3io.GetContainersInput:
+			response, err = c.GetContainersSync(typedInput)
+		case *v3io.GetContainerContentsInput:
+			response, err = c.GetContainerContentsSync(typedInput)
+		default:
+			c.logger.ErrorWith("Got unexpected request type", "type", reflect.TypeOf(request.Input).String())
 		}
-	}
-}
 
-func (c *context) handleRequest(workerIndex int, request *v3io.Request) error {
-	var response *v3io.Response
-	var err error
-
-	// according to the input type
-	switch typedInput := request.Input.(type) {
-	case *v3io.PutObjectInput:
-		err = c.PutObjectSync(typedInput)
-	case *v3io.GetObjectInput:
-		response, err = c.GetObjectSync(typedInput)
-	case *v3io.DeleteObjectInput:
-		err = c.DeleteObjectSync(typedInput)
-	case *v3io.GetItemInput:
-		response, err = c.GetItemSync(typedInput)
-	case *v3io.GetItemsInput:
-		response, err = c.GetItemsSync(typedInput)
-	case *v3io.PutItemInput:
-		response, err = c.PutItemSync(typedInput)
-	case *v3io.PutItemsInput:
-		response, err = c.PutItemsSync(typedInput)
-	case *v3io.UpdateItemInput:
-		response, err = c.UpdateItemSync(typedInput)
-	case *v3io.CreateStreamInput:
-		err = c.CreateStreamSync(typedInput)
-	case *v3io.DeleteStreamInput:
-		err = c.DeleteStreamSync(typedInput)
-	case *v3io.GetRecordsInput:
-		response, err = c.GetRecordsSync(typedInput)
-	case *v3io.PutRecordsInput:
-		response, err = c.PutRecordsSync(typedInput)
-	case *v3io.SeekShardInput:
-		response, err = c.SeekShardSync(typedInput)
-	case *v3io.GetContainersInput:
-		response, err = c.GetContainersSync(typedInput)
-	case *v3io.GetContainerContentsInput:
-		response, err = c.GetContainerContentsSync(typedInput)
-	case *v3io.StopContextInput:
-		response = &v3io.Response{
-			Output: &v3io.StopContextOutput{
-				WorkerIndex: workerIndex,
-			},
+		// TODO: have the sync interfaces somehow use the pre-allocated response
+		if response != nil {
+			request.RequestResponse.Response = *response
 		}
-		err = ErrContextStopped
-	default:
-		c.logger.ErrorWith("Got unexpected request type", "type", reflect.TypeOf(request.Input).String())
+
+		response = &request.RequestResponse.Response
+
+		response.ID = request.ID
+		response.Error = err
+		response.RequestResponse = request.RequestResponse
+		response.Context = request.Context
+
+		// write to response channel
+		request.ResponseChan <- &request.RequestResponse.Response
 	}
-
-	// TODO: have the sync interfaces somehow use the pre-allocated response
-	if response != nil {
-		request.RequestResponse.Response = *response
-	}
-
-	response = &request.RequestResponse.Response
-
-	response.ID = request.ID
-	response.Error = err
-	response.RequestResponse = request.RequestResponse
-	response.Context = request.Context
-
-	// write to response channel
-	request.ResponseChan <- &request.RequestResponse.Response
-
-	return err
 }
 
 func readAllCapnpMessages(reader io.Reader) []*capnp.Message {
@@ -1278,7 +1258,7 @@ func decodeCapnpAttributes(keyValues node_common_capnp.VnObjectItemsGetMappedKey
 func (c *context) getItemsParseJSONResponse(response *v3io.Response, getItemsInput *v3io.GetItemsInput) (*v3io.GetItemsOutput, error) {
 
 	getItemsResponse := struct {
-		Items []map[string]map[string]interface{}
+		Items            []map[string]map[string]interface{}
 		NextMarker       string
 		LastItemIncluded string
 	}{}
@@ -1367,13 +1347,17 @@ func (c *context) getItemsParseCAPNPResponse(response *v3io.Response, withWildca
 	accLength := 0
 	//Additional data sections "in between"
 	for capnpSectionIndex := 1; capnpSectionIndex < len(capnpSections)-1; capnpSectionIndex++ {
-		data, err := node_common_capnp.ReadRootVnObjectAttributeValueMap(capnpSections[capnpSectionIndex])
+		data, err := node_common_capnp.ReadRootVnObjectItemsGetResponseDataPayload(capnpSections[capnpSectionIndex])
 		if err != nil {
 			return nil, errors.Wrap(err, "node_common_capnp.ReadRootVnObjectAttributeValueMap")
 		}
-		dv, err := data.Values()
+		dvmap, err := data.ValueMap()
 		if err != nil {
-			return nil, errors.Wrap(err, "data.Values")
+			return nil, errors.Wrap(err, "data.ValueMap")
+		}
+		dv, err := dvmap.Values()
+		if err != nil {
+			return nil, errors.Wrap(err, "data.ValueMap.Values")
 		}
 		accLength = accLength + dv.Len()
 		valuesSections[capnpSectionIndex-1].data = dv
@@ -1418,109 +1402,4 @@ func (c *context) getItemsParseCAPNPResponse(response *v3io.Response, withWildca
 		getItemsOutput.Items = append(getItemsOutput.Items, ditem)
 	}
 	return &getItemsOutput, nil
-}
-
-func (c *context) inactivityMonitorEntry() {
-	c.logger.DebugWith("Inactivity monitor starting",
-		"timeout", c.inactivityMonitorTimeout)
-
-	inactivityMonitorTimerExpired := false
-
-	for !inactivityMonitorTimerExpired {
-		select {
-		case request := <-c.inactivityMonitorChan:
-			switch request {
-			case inactivityMonitorRequestStop:
-				c.logger.Debug("Inactivity monitor requested to stop")
-				return
-			case inactivityMonitorRequestReset:
-				c.inactivityMonitorTimer.Reset(c.inactivityMonitorTimeout)
-			}
-
-		case <-c.inactivityMonitorTimer.C:
-			inactivityMonitorTimerExpired = true
-		}
-	}
-
-	// force stop
-	c.stop("Inactivity timout expired", nil) // nolint: errcheck
-}
-
-func (c *context) stop(reason string, timeout *time.Duration) error {
-	var workerStoppedChan chan *v3io.Response
-
-	timeoutStr := "None"
-	if timeout != nil {
-		timeoutStr = timeout.String()
-	}
-
-	c.logger.DebugWith("Stopping context",
-		"reason", reason,
-		"timeout", timeoutStr)
-
-	workerStoppedChan = make(chan *v3io.Response, c.numWorkers)
-
-	// it's guaranteed that a single worker will not read two messages from the queue, so
-	// each worker should receive a single stop request
-	for workerIdx := 0; workerIdx < c.numWorkers; workerIdx++ {
-		_, err := c.sendRequestToWorker(&v3io.StopContextInput{Reason: reason},
-			nil,
-			workerStoppedChan)
-
-		if err != nil {
-			return errors.Wrap(err, "Failed to send request to worker")
-		}
-	}
-
-	// if timeout is set, wait for all workers to stop
-	if timeout != nil {
-		deadline := time.After(*timeout)
-		workersStopped := 0
-
-		// while not all workers stopped, wait for them to stop
-		for workersStopped < c.numWorkers {
-			select {
-			case <-workerStoppedChan:
-				workersStopped++
-			case <-deadline:
-				return errors.New("Timed out waiting for context to stop")
-			}
-		}
-	}
-
-	c.logger.DebugWith("Context stopped")
-
-	return nil
-}
-
-// parsing the mtime from a header of the form `__mtime_secs==1581605100 and __mtime_nsecs==498349956`
-func parseMtimeHeader(response *v3io.Response) (int, int, error) {
-	var mtimeSecs, mtimeNSecs int
-	var err error
-
-	mtimeHeader := string(response.HeaderPeek("X-v3io-transaction-verifier"))
-	for _, expression := range strings.Split(mtimeHeader, "and") {
-		mtimeParts := strings.Split(expression, "==")
-		mtimeType := strings.TrimSpace(mtimeParts[0])
-		if mtimeType == "__mtime_secs" {
-			mtimeSecs, err = trimAndParseInt(mtimeParts[1])
-			if err != nil {
-				return 0, 0, err
-			}
-		} else if mtimeType == "__mtime_nsecs" {
-			mtimeNSecs, err = trimAndParseInt(mtimeParts[1])
-			if err != nil {
-				return 0, 0, err
-			}
-		} else {
-			return 0, 0, fmt.Errorf("failed to parse 'X-v3io-transaction-verifier', unexpected symbol '%v' ", mtimeType)
-		}
-	}
-
-	return mtimeSecs, mtimeNSecs, nil
-}
-
-func trimAndParseInt(str string) (int, error) {
-	trimmed := strings.TrimSpace(str)
-	return strconv.Atoi(trimmed)
 }

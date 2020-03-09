@@ -24,8 +24,7 @@ type syncContainerTestSuite struct {
 }
 
 func (suite *syncContainerTestSuite) TestGetContainers() {
-	suite.T().Skip()
-	suite.containerName = ""
+	suite.containerName = "bigdata"
 
 	getContainersInput := v3io.GetContainersInput{}
 
@@ -360,7 +359,7 @@ func (suite *syncKVTestSuite) TestEMD() {
 		suite.populateDataPlaneInput(&input.DataPlaneInput)
 
 		// get a specific bucket
-		_, err := suite.container.PutItemSync(&input)
+		err := suite.container.PutItemSync(&input)
 		suite.Require().NoError(err, "Failed to put item")
 	}
 
@@ -382,7 +381,7 @@ func (suite *syncKVTestSuite) TestEMD() {
 	// when run against a context, will populate fields like container name
 	suite.populateDataPlaneInput(&updateItemInput.DataPlaneInput)
 
-	_, err := suite.container.UpdateItemSync(&updateItemInput)
+	err := suite.container.UpdateItemSync(&updateItemInput)
 	suite.Require().NoError(err, "Failed to update item")
 
 	// get louise
@@ -450,7 +449,7 @@ func (suite *syncKVTestSuite) TestEMD() {
 	// when run against a context, will populate fields like container name
 	suite.populateDataPlaneInput(&updateItemInput.DataPlaneInput)
 
-	_, err = suite.container.UpdateItemSync(&updateItemInput)
+	err = suite.container.UpdateItemSync(&updateItemInput)
 	suite.Require().NoError(err, "Failed to update item")
 
 	// get tina
@@ -633,28 +632,22 @@ func (suite *syncContainerKVTestSuite) SetupSuite() {
 
 type syncStreamTestSuite struct {
 	syncTestSuite
-	testPath string
+	streamTestSuite streamTestSuite
 }
 
 func (suite *syncStreamTestSuite) SetupTest() {
-	suite.testPath = "/stream-test"
-	err := suite.deleteAllStreamsInPath(suite.testPath)
-	// get the underlying root error
-	if err != nil {
-		errWithStatusCode, errHasStatusCode := err.(v3ioerrors.ErrorWithStatusCode)
-		suite.Require().True(errHasStatusCode)
-		// File not found is OK
-		suite.Require().Equal(404, errWithStatusCode.StatusCode(), "Failed to setup test suite")
+	suite.streamTestSuite = streamTestSuite{
+		testSuite: suite.syncTestSuite.testSuite,
 	}
+	suite.streamTestSuite.SetupTest()
 }
 
 func (suite *syncStreamTestSuite) TearDownTest() {
-	err := suite.deleteAllStreamsInPath(suite.testPath)
-	suite.Require().NoError(err, "Failed to tear down test suite")
+	suite.streamTestSuite.TearDownTest()
 }
 
 func (suite *syncStreamTestSuite) TestStream() {
-	streamPath := fmt.Sprintf("%s/mystream/", suite.testPath)
+	streamPath := fmt.Sprintf("%s/mystream/", suite.streamTestSuite.testPath)
 
 	//
 	// Create the stream
@@ -773,39 +766,6 @@ func (suite *syncStreamTestSuite) TestStream() {
 	suite.Require().NoError(err, "Failed to delete stream")
 }
 
-func (suite *syncStreamTestSuite) deleteAllStreamsInPath(path string) error {
-
-	getContainerContentsInput := v3io.GetContainerContentsInput{
-		Path: path,
-	}
-
-	suite.populateDataPlaneInput(&getContainerContentsInput.DataPlaneInput)
-
-	// get all streams in the test path
-	response, err := suite.container.GetContainerContentsSync(&getContainerContentsInput)
-
-	if err != nil {
-		return err
-	}
-	response.Release()
-
-	// iterate over streams (prefixes) and delete them
-	for _, commonPrefix := range response.Output.(*v3io.GetContainerContentsOutput).CommonPrefixes {
-		deleteStreamInput := v3io.DeleteStreamInput{
-			Path: "/" + commonPrefix.Prefix,
-		}
-
-		suite.populateDataPlaneInput(&deleteStreamInput.DataPlaneInput)
-
-		err := suite.container.DeleteStreamSync(&deleteStreamInput)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 type syncContextStreamTestSuite struct {
 	syncStreamTestSuite
 }
@@ -850,7 +810,12 @@ func validateContent(suite *syncContainerTestSuite, content *v3io.Content, expec
 		suite.Require().NotEmpty(content.CreatingTime)
 		suite.Require().NotEmpty(content.GID)
 		suite.Require().NotEmpty(content.UID)
-		suite.Require().NotEmpty(content.Mode.FileMode())
+		mode, err := content.Mode.FileMode()
+		suite.NoErrorf(err, "Failed to resolve file mode")
+		suite.Require().NotEmpty(mode)
+		suite.Require().False(mode.IsDir())
+		suite.Require().True(mode.IsRegular())
+		suite.Require().Equal("-rw-rw-r--", mode.String(), "File '%s' mode '%v'", content.Key, content.Mode)
 		suite.Require().NotEmpty(content.InodeNumber)
 		suite.Require().Nil(content.LastSequenceID)
 	} else {
@@ -874,7 +839,14 @@ func validateCommonPrefix(suite *syncContainerTestSuite, prefix *v3io.CommonPref
 		suite.Require().NotEmpty(prefix.CreatingTime)
 		suite.Require().NotEmpty(prefix.GID)
 		suite.Require().NotEmpty(prefix.UID)
-		suite.Require().NotEmpty(prefix.Mode.FileMode())
+		mode, err := prefix.Mode.FileMode()
+		suite.NoErrorf(err, "Failed to resolve file mode")
+		suite.Require().NotEmpty(mode)
+		suite.Require().True(mode.IsDir())
+		suite.Require().False(mode.IsRegular())
+		suite.Require().Equal("drwxrwxr-x", mode.String(), "Dir '%s' mode '%v'", prefix.Prefix, prefix.Mode) // expected mode: -rw-rw-r-- (664)
+		suite.NoErrorf(err, "Failed to resolve file mode")
+		suite.Require().NotEmpty(mode)
 		suite.Require().NotEmpty(prefix.InodeNumber)
 		suite.Require().Equal(true, *prefix.InodeNumber > 0)
 	} else {
