@@ -195,9 +195,17 @@ func validateRequest(eventBody []byte) (*request, error) {
 	aggregators, ok := requestMap["aggregators"]
 	delete(requestMap, "aggregators")
 	if ok {
-		request.Aggregators, ok = aggregators.([]string)
+		aggrs, ok := aggregators.([]interface{})
 		if !ok {
-			return nil, errors.New("'aggregators' field must be a string array")
+			return nil, errors.New("'aggregators' field must be an array")
+		}
+		request.Aggregators = make([]string, 0, len(aggrs))
+		for _, aggr := range aggrs {
+			aggregator, ok := aggr.(string)
+			if !ok {
+				return nil, errors.New("'aggregators' array must contain only strings")
+			}
+			request.Aggregators = append(request.Aggregators, aggregator)
 		}
 	}
 	var unsupportedFields []string
