@@ -37,16 +37,21 @@ func IsNotExistsError(err error) bool {
 	return false
 }
 
-func IsNotExistsOrConflictError(err error) bool {
-	errorWithStatusCode, ok := err.(v3ioerrors.ErrorWithStatusCode)
-	if !ok {
-		// error of different type
-		return false
-	}
-	statusCode := errorWithStatusCode.StatusCode()
-	// Ignore 404s and 409s
-	if statusCode == http.StatusNotFound || statusCode == http.StatusConflict {
+const (
+	errorCodeString              = "ErrorCode"
+	falseConditionOuterErrorCode = "16777244"
+	falseConditionInnerErrorCode = "16777245"
+)
+
+// Check if the current error was caused specifically because the condition was evaluated to false.
+func IsFalseConditionError(err error) bool {
+	errString := err.Error()
+
+	if strings.Count(errString, errorCodeString) == 2 &&
+		strings.Contains(errString, falseConditionOuterErrorCode) &&
+		strings.Contains(errString, falseConditionInnerErrorCode) {
 		return true
 	}
+
 	return false
 }
