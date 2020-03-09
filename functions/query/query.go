@@ -71,10 +71,13 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 
 	// Select query to get back a series set iterator
 	seriesSet, err := querier.Select(params)
-	if errors.Cause(err) != nil {
-		if e, hasErrorCode := err.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
+	if err != nil {
+		cause := errors.Cause(err)
+		if e, hasErrorCode := cause.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
+			context.Logger.Info("WrapErrBadRequest(%v)", err)
 			return nil, nuclio.WrapErrBadRequest(err)
 		}
+		context.Logger.Info("Wrap(%v)", err)
 		return nil, errors.Wrap(err, "Failed to execute query select")
 	}
 
