@@ -10,6 +10,7 @@ import (
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
+	v3ioerrors "github.com/v3io/v3io-go/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/formatter"
 	"github.com/v3io/v3io-tsdb/pkg/pquerier"
@@ -71,6 +72,10 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	// Select query to get back a series set iterator
 	seriesSet, err := querier.Select(params)
 	if err != nil {
+		cause := errors.Cause(err)
+		if e, hasErrorCode := cause.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
+			return nil, nuclio.WrapErrBadRequest(err)
+		}
 		return nil, errors.Wrap(err, "Failed to execute query select")
 	}
 
