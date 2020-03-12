@@ -10,6 +10,7 @@ import (
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
+	v3ioerrors "github.com/v3io/v3io-go/pkg/errors"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/formatter"
 	"github.com/v3io/v3io-tsdb/pkg/pquerier"
@@ -71,6 +72,10 @@ func Query(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 	// Select query to get back a series set iterator
 	seriesSet, err := querier.Select(params)
 	if err != nil {
+		cause := errors.Cause(err)
+		if e, hasErrorCode := cause.(v3ioerrors.ErrorWithStatusCode); hasErrorCode && e.StatusCode() >= 400 && e.StatusCode() < 500 {
+			return nil, nuclio.WrapErrBadRequest(err)
+		}
 		return nil, errors.Wrap(err, "Failed to execute query select")
 	}
 
@@ -195,9 +200,17 @@ func validateRequest(eventBody []byte) (*request, error) {
 	aggregators, ok := requestMap["aggregators"]
 	delete(requestMap, "aggregators")
 	if ok {
-		request.Aggregators, ok = aggregators.([]string)
+		aggrs, ok := aggregators.([]interface{})
 		if !ok {
-			return nil, errors.New("'aggregators' field must be a string array")
+			return nil, errors.New("'aggregators' field must be an array")
+		}
+		request.Aggregators = make([]string, 0, len(aggrs))
+		for _, aggr := range aggrs {
+			aggregator, ok := aggr.(string)
+			if !ok {
+				return nil, errors.New("'aggregators' array must contain only strings")
+			}
+			request.Aggregators = append(request.Aggregators, aggregator)
 		}
 	}
 	var unsupportedFields []string
