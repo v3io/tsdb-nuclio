@@ -1,6 +1,8 @@
 label = "${UUID.randomUUID().toString()}"
 git_project = "tsdb-nuclio"
 git_project_user = "v3io"
+git_project_upstream_user = "iguazio"
+git_deploy_user = "iguazio-prod-git-user"
 git_deploy_user_token = "iguazio-prod-git-user-token"
 git_deploy_user_private_key = "iguazio-prod-git-user-private-key"
 
@@ -14,7 +16,7 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
             withCredentials([
                     string(credentialsId: git_deploy_user_token, variable: 'GIT_TOKEN')
             ]) {
-                github.init_project(git_project, git_project_user, GIT_TOKEN) {
+                github.release(git_deploy_user, git_project, git_project_user, git_project_upstream_user, true, GIT_TOKEN) {
                     stage('prepare sources') {
                         container('jnlp') {
                             dir("${github.BUILD_FOLDER}/src/github.com/v3io/${git_project}") {
