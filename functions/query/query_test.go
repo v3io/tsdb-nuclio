@@ -23,8 +23,8 @@ func (suite *QueryTestSuite) TestValidateRequest() {
 		EndTime:   "1642995948517",
 	}
 	req, err := validateRequest([]byte(requestString))
-	suite.NoError(err)
-	suite.Equal(expected, req)
+	suite.Require().NoError(err)
+	suite.Require().Equal(expected, req)
 }
 
 func (suite *QueryTestSuite) TestValidateRequestBadAggregators() {
@@ -36,9 +36,9 @@ func (suite *QueryTestSuite) TestValidateRequestBadAggregators() {
 		"end_time": "1642995948517"
     }`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
-	expectedErrorMessage := "'aggregators' field must be a string array"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Error(err)
+	expectedErrorMessage := "'aggregators' field must be an array"
+	suite.Require().Equal(expectedErrorMessage, err.Error())
 }
 
 func (suite *QueryTestSuite) TestValidateRequestBadFieldName() {
@@ -47,9 +47,9 @@ func (suite *QueryTestSuite) TestValidateRequestBadFieldName() {
     	"filter_expression": "1==1"
 	}`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
+	suite.Require().Error(err)
 	expectedErrorMessage := "Request must not contain unsupported fields: m3tric"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Equal(expectedErrorMessage, err.Error())
 }
 
 func (suite *QueryTestSuite) TestValidateRequestBadFieldType() {
@@ -58,9 +58,9 @@ func (suite *QueryTestSuite) TestValidateRequestBadFieldType() {
     	"start_time": 1542111395000
 	}`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
+	suite.Require().Error(err)
 	expectedErrorMessage := "'start_time' field must be a string"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Equal(expectedErrorMessage, err.Error())
 }
 
 func (suite *QueryTestSuite) TestValidateRequestMinimal() {
@@ -71,8 +71,8 @@ func (suite *QueryTestSuite) TestValidateRequestMinimal() {
 		Metric: "cpu",
 	}
 	req, err := validateRequest([]byte(requestString))
-	suite.NoError(err)
-	suite.Equal(expected, req)
+	suite.Require().NoError(err)
+	suite.Require().Equal(expected, req)
 }
 
 func (suite *QueryTestSuite) TestValidateRequestWithoutMetric() {
@@ -85,8 +85,8 @@ func (suite *QueryTestSuite) TestValidateRequestWithoutMetric() {
 		EndTime:          "1542111395000",
 	}
 	req, err := validateRequest([]byte(requestString))
-	suite.NoError(err)
-	suite.Equal(expected, req)
+	suite.Require().NoError(err)
+	suite.Require().Equal(expected, req)
 }
 
 func (suite *QueryTestSuite) TestValidateRequestIntAggregators() {
@@ -95,9 +95,23 @@ func (suite *QueryTestSuite) TestValidateRequestIntAggregators() {
 		"aggregators": [1, 2, 3] 
 	}`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
-	expectedErrorMessage := "'aggregators' field must be a string array"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Error(err)
+	expectedErrorMessage := "'aggregators' array must contain only strings"
+	suite.Require().Equal(expectedErrorMessage, err.Error())
+}
+
+func (suite *QueryTestSuite) TestValidateRequestStringAggregators() {
+	requestString := `{
+		"metric": "cpu",
+		"aggregators": ["a", "b", "c"]
+    }`
+	expected := &request{
+		Metric:      "cpu",
+		Aggregators: []string{"a", "b", "c"},
+	}
+	req, err := validateRequest([]byte(requestString))
+	suite.Require().NoError(err)
+	suite.Require().Equal(expected, req)
 }
 
 func (suite *QueryTestSuite) TestValidateRequestUnsupportedField() {
@@ -106,9 +120,9 @@ func (suite *QueryTestSuite) TestValidateRequestUnsupportedField() {
 		"3nd_t1me": "1542111395000"
 	}`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
+	suite.Require().Error(err)
 	expectedErrorMessage := "Request must not contain unsupported fields: 3nd_t1me"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Equal(expectedErrorMessage, err.Error())
 }
 
 func (suite *QueryTestSuite) TestValidateRequestLastAndEndTime() {
@@ -118,18 +132,18 @@ func (suite *QueryTestSuite) TestValidateRequestLastAndEndTime() {
 		"end_time": "1542111395000"
 	}`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
+	suite.Require().Error(err)
 	expectedErrorMessage := "'last' field must not be used in conjunction with 'start_time' or 'end_time'"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Equal(expectedErrorMessage, err.Error())
 }
 
 func (suite *QueryTestSuite) TestValidateEmptyRequest() {
 	requestString := `{
 	}`
 	_, err := validateRequest([]byte(requestString))
-	suite.Error(err)
+	suite.Require().Error(err)
 	expectedErrorMessage := "Request must contain either a 'metric' field or 'filter_expression' field"
-	suite.Equal(expectedErrorMessage, err.Error())
+	suite.Require().Equal(expectedErrorMessage, err.Error())
 }
 
 func TestQueryTestSuite(t *testing.T) {
