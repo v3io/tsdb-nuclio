@@ -125,6 +125,38 @@ func (c *context) GetContainersSync(getContainersInput *v3io.GetContainersInput)
 		nil,
 		&v3io.GetContainersOutput{})
 }
+// GetClusterMD
+func (c *context) GetClusterMD(getClusterMDInput *v3io.GetClusterMDInput,
+	context interface{},
+	responseChan chan *v3io.Response) (*v3io.Request, error) {
+	return c.sendRequestToWorker(getClusterMDInput, context, responseChan)
+}
+
+func (c *context) GetClusterMDSync(getClusterMDInput *v3io.GetClusterMDInput) (*v3io.Response, error) {
+	response, err := c.sendRequest(&getClusterMDInput.DataPlaneInput,
+		http.MethodPut,
+		"",
+		"",
+		getClusterMDHeaders,
+		nil,
+		false)
+	if err != nil {
+		return nil, err
+	}
+
+	getClusterMDOutput := v3io.GetClusterMDOutput{}
+
+	// unmarshal the body into an ad hoc structure
+	err = json.Unmarshal(response.Body(), &getClusterMDOutput)
+	if err != nil {
+		return nil, err
+	}
+
+	// set the output in the response
+	response.Output = &getClusterMDOutput
+
+	return response, nil
+}
 
 // GetContainers
 func (c *context) GetContainerContents(getContainerContentsInput *v3io.GetContainerContentsInput,
@@ -321,7 +353,7 @@ func (c *context) PutItem(putItemInput *v3io.PutItemInput,
 }
 
 // PutItemSync
-func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) error {
+func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) (*v3io.Response, error) {
 	var body map[string]interface{}
 	if putItemInput.UpdateMode != "" {
 		body = map[string]interface{}{
@@ -330,15 +362,24 @@ func (c *context) PutItemSync(putItemInput *v3io.PutItemInput) error {
 	}
 
 	// prepare the query path
-	_, err := c.putItem(&putItemInput.DataPlaneInput,
+	response, err := c.putItem(&putItemInput.DataPlaneInput,
 		putItemInput.Path,
 		putItemFunctionName,
 		putItemInput.Attributes,
 		putItemInput.Condition,
 		putItemHeaders,
 		body)
+	if err != nil {
+		return nil, err
+	}
 
-	return err
+	mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
+	if err != nil {
+		return nil, err
+	}
+	response.Output = &v3io.PutItemOutput{MtimeSecs: mtimeSecs, MtimeNSecs: mtimeNSecs}
+
+	return response, err
 }
 
 // PutItems
@@ -399,8 +440,9 @@ func (c *context) UpdateItem(updateItemInput *v3io.UpdateItemInput,
 }
 
 // UpdateItemSync
-func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) error {
+func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) (*v3io.Response, error) {
 	var err error
+	var response *v3io.Response
 
 	if updateItemInput.Attributes != nil {
 
@@ -413,26 +455,45 @@ func (c *context) UpdateItemSync(updateItemInput *v3io.UpdateItemInput) error {
 			body["UpdateMode"] = updateItemInput.UpdateMode
 		}
 
-		_, err = c.putItem(&updateItemInput.DataPlaneInput,
+		response, err = c.putItem(&updateItemInput.DataPlaneInput,
 			updateItemInput.Path,
 			putItemFunctionName,
 			updateItemInput.Attributes,
 			updateItemInput.Condition,
 			putItemHeaders,
 			body)
+		if err != nil {
+			return nil, err
+		}
+
+		mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
+		if err != nil {
+			return nil, err
+		}
+		response.Output = &v3io.UpdateItemOutput{MtimeSecs: mtimeSecs, MtimeNSecs: mtimeNSecs}
 
 	} else if updateItemInput.Expression != nil {
 
-		_, err = c.updateItemWithExpression(&updateItemInput.DataPlaneInput,
+		response, err = c.updateItemWithExpression(&updateItemInput.DataPlaneInput,
 			updateItemInput.Path,
 			updateItemFunctionName,
 			*updateItemInput.Expression,
 			updateItemInput.Condition,
 			updateItemHeaders,
 			updateItemInput.UpdateMode)
+		if err != nil {
+			return nil, err
+		}
+
+		mtimeSecs, mtimeNSecs, err := parseMtimeHeader(response)
+		if err != nil {
+			return nil, err
+		}
+		response.Output = &v3io.UpdateItemOutput{MtimeSecs: mtimeSecs, MtimeNSecs: mtimeNSecs}
+
 	}
 
-	return err
+	return response, err
 }
 
 // GetObject
@@ -1142,11 +1203,11 @@ func (c *context) workerEntry(workerIndex int) {
 		case *v3io.GetItemsInput:
 			response, err = c.GetItemsSync(typedInput)
 		case *v3io.PutItemInput:
-			err = c.PutItemSync(typedInput)
+			response, err = c.PutItemSync(typedInput)
 		case *v3io.PutItemsInput:
 			response, err = c.PutItemsSync(typedInput)
 		case *v3io.UpdateItemInput:
-			err = c.UpdateItemSync(typedInput)
+			response, err = c.UpdateItemSync(typedInput)
 		case *v3io.CreateStreamInput:
 			err = c.CreateStreamSync(typedInput)
 		case *v3io.DescribeStreamInput:
@@ -1163,6 +1224,8 @@ func (c *context) workerEntry(workerIndex int) {
 			response, err = c.GetContainersSync(typedInput)
 		case *v3io.GetContainerContentsInput:
 			response, err = c.GetContainerContentsSync(typedInput)
+		case *v3io.GetClusterMDInput:
+			response, err = c.GetClusterMDSync(typedInput)
 		default:
 			c.logger.ErrorWith("Got unexpected request type", "type", reflect.TypeOf(request.Input).String())
 		}
@@ -1198,6 +1261,9 @@ func readAllCapnpMessages(reader io.Reader) []*capnp.Message {
 
 func getSectionAndIndex(values []attributeValuesSection, idx int) (section int, resIdx int) {
 	if len(values) == 1 {
+		return 0, idx
+	}
+	if idx < values[0].accumulatedPreviousSectionsLength {
 		return 0, idx
 	}
 	for i := 1; i < len(values); i++ {
@@ -1402,4 +1468,36 @@ func (c *context) getItemsParseCAPNPResponse(response *v3io.Response, withWildca
 		getItemsOutput.Items = append(getItemsOutput.Items, ditem)
 	}
 	return &getItemsOutput, nil
+}
+
+// parsing the mtime from a header of the form `__mtime_secs==1581605100 and __mtime_nsecs==498349956`
+func parseMtimeHeader(response *v3io.Response) (int, int, error) {
+	var mtimeSecs, mtimeNSecs int
+	var err error
+
+	mtimeHeader := string(response.HeaderPeek("X-v3io-transaction-verifier"))
+	for _, expression := range strings.Split(mtimeHeader, "and") {
+		mtimeParts := strings.Split(expression, "==")
+		mtimeType := strings.TrimSpace(mtimeParts[0])
+		if mtimeType == "__mtime_secs" {
+			mtimeSecs, err = trimAndParseInt(mtimeParts[1])
+			if err != nil {
+				return 0, 0, err
+			}
+		} else if mtimeType == "__mtime_nsecs" {
+			mtimeNSecs, err = trimAndParseInt(mtimeParts[1])
+			if err != nil {
+				return 0, 0, err
+			}
+		} else {
+			return 0, 0, fmt.Errorf("failed to parse 'X-v3io-transaction-verifier', unexpected symbol '%v' ", mtimeType)
+		}
+	}
+
+	return mtimeSecs, mtimeNSecs, nil
+}
+
+func trimAndParseInt(str string) (int, error) {
+	trimmed := strings.TrimSpace(str)
+	return strconv.Atoi(trimmed)
 }
