@@ -27,6 +27,7 @@ enum DType {
     STRING = 2;
     TIME = 3;
     BOOLEAN = 4;
+    NULL = 5;
 }
 
 message Column {
@@ -206,6 +207,7 @@ message DeleteRequest {
     // TSDB and Stream specific fields
     string start = 6;
     string end = 7;
+    repeated string metrics = 8;
 }
 
 message DeleteResponse {}
