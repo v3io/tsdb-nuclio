@@ -34,8 +34,6 @@ github.com/nuclio/errors
 github.com/nuclio/logger
 # github.com/nuclio/nuclio-sdk-go v0.0.0-20190205170814-3b507fbd0324
 github.com/nuclio/nuclio-sdk-go
-# github.com/nuclio/nuclio-test-go v0.0.0-20180704132150-0ce6587f8e37
-github.com/nuclio/nuclio-test-go
 # github.com/nuclio/zap v0.0.2
 github.com/nuclio/zap
 # github.com/pavius/zap v1.4.2-0.20180228181622-8d52692529b8
@@ -70,8 +68,6 @@ github.com/v3io/v3io-go/pkg/dataplane
 github.com/v3io/v3io-go/pkg/errors
 github.com/v3io/v3io-go/pkg/dataplane/http
 github.com/v3io/v3io-go/pkg/dataplane/schemas/node/common
-# github.com/v3io/v3io-go-http v0.0.0-20190415143924-cc2fbcde6663
-github.com/v3io/v3io-go-http
 # github.com/valyala/bytebufferpool v1.0.0
 github.com/valyala/bytebufferpool
 # github.com/valyala/fasthttp v1.2.0
