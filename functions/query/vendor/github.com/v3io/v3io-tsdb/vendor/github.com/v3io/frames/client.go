@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+
 	"github.com/v3io/frames/pb"
 )
 

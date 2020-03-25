@@ -223,7 +223,7 @@ func downsampleRawData(ctx *selectQueryContext, res *qryResults,
 			if it.Seek(currCellTime) {
 				t, v := it.At()
 				if t == currCellTime {
-					_ = res.frame.setDataAt(col.Name(), currCell, v)
+					_ = res.frame.setDataAt(col.Name(), int(currCell), v)
 				} else {
 					prevT, prevV := it.PeakBack()
 
@@ -236,7 +236,7 @@ func downsampleRawData(ctx *selectQueryContext, res *qryResults,
 
 					// Check if the interpolation was successful in terms of exceeding tolerance
 					if !(interpolatedT == 0 && interpolatedV == 0) {
-						_ = res.frame.setDataAt(col.Name(), currCell, interpolatedV)
+						_ = res.frame.setDataAt(col.Name(), int(currCell), interpolatedV)
 					}
 				}
 			}
@@ -249,10 +249,7 @@ func downsampleRawData(ctx *selectQueryContext, res *qryResults,
 
 func aggregateClientAggregatesCrossSeries(ctx *selectQueryContext, res *qryResults, previousPartitionLastTime int64, previousPartitionLastValue float64) (int64, float64, error) {
 	ctx.logger.Debug("using Client Aggregates Collector for metric %v", res.name)
-	it, ok := newRawChunkIterator(res, ctx.logger).(*RawChunkIterator)
-	if !ok {
-		return previousPartitionLastTime, previousPartitionLastValue, nil
-	}
+	it := newRawChunkIterator(res, ctx.logger).(*RawChunkIterator)
 
 	var previousPartitionEndBucket int
 	if previousPartitionLastTime != 0 {
@@ -271,7 +268,7 @@ func aggregateClientAggregatesCrossSeries(ctx *selectQueryContext, res *qryResul
 			if t == currBucketTime {
 				for _, col := range res.frame.columns {
 					if col.GetColumnSpec().metric == res.name {
-						_ = res.frame.setDataAt(col.Name(), currBucket, v)
+						_ = res.frame.setDataAt(col.Name(), int(currBucket), v)
 					}
 				}
 			} else {
@@ -287,7 +284,7 @@ func aggregateClientAggregatesCrossSeries(ctx *selectQueryContext, res *qryResul
 					if col.GetColumnSpec().metric == res.name {
 						interpolatedT, interpolatedV := col.GetInterpolationFunction()(prevT, t, currBucketTime, prevV, v)
 						if !(interpolatedT == 0 && interpolatedV == 0) {
-							_ = res.frame.setDataAt(col.Name(), currBucket, interpolatedV)
+							_ = res.frame.setDataAt(col.Name(), int(currBucket), interpolatedV)
 						}
 					}
 				}

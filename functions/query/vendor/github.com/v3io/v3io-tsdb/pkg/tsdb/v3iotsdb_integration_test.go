@@ -24,20 +24,15 @@ package tsdb_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/v3io/v3io-go/pkg/dataplane"
 	"github.com/v3io/v3io-tsdb/pkg/aggregate"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
 	"github.com/v3io/v3io-tsdb/pkg/config"
-	"github.com/v3io/v3io-tsdb/pkg/pquerier"
 	. "github.com/v3io/v3io-tsdb/pkg/tsdb"
-	"github.com/v3io/v3io-tsdb/pkg/tsdb/schema"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb/tsdbtest"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb/tsdbtest/testutils"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
@@ -46,7 +41,6 @@ import (
 const defaultStepMs = 5 * tsdbtest.MinuteInMillis // 5 minutes
 
 func TestIngestData(t *testing.T) {
-	timestamp := fmt.Sprintf("%d", time.Now().Unix()) //time.Now().Format(time.RFC3339)
 	testCases := []struct {
 		desc   string
 		params tsdbtest.TestParams
@@ -104,46 +98,6 @@ func TestIngestData(t *testing.T) {
 					}}},
 			),
 		},
-		{desc: "Should drop values of incompatible data types ",
-			params: tsdbtest.NewTestParams(t,
-				tsdbtest.TestOption{
-					Key: tsdbtest.OptTimeSeries,
-					Value: tsdbtest.TimeSeries{tsdbtest.Metric{
-						Name:   "IG13146",
-						Labels: utils.LabelsFromStringList("test", "IG-13146", "float", "string"),
-						Data: []tsdbtest.DataPoint{
-							{Time: 15, Value: 0.1},                 // first add float value
-							{Time: 20, Value: "some string value"}, // then attempt to add string value
-							{Time: 30, Value: 0.2},                 // and finally add another float value
-						},
-						ExpectedCount: func() *int { var expectedCount = 2; return &expectedCount }(),
-					}}},
-				tsdbtest.TestOption{
-					Key:   "override_test_name",
-					Value: fmt.Sprintf("IG-13146-%s", timestamp)}),
-		},
-		{desc: "IG-13146: Should reject values of incompatible data types without data corruption",
-			params: tsdbtest.NewTestParams(t,
-				tsdbtest.TestOption{
-					Key: tsdbtest.OptTimeSeries,
-					Value: tsdbtest.TimeSeries{tsdbtest.Metric{
-						Name:   "IG13146",
-						Labels: utils.LabelsFromStringList("test", "IG-13146", "float", "string"),
-						Data: []tsdbtest.DataPoint{
-							{Time: 50, Value: "another string value"}, // then attempt to add string value
-							{Time: 60, Value: 0.4},                    // valid values from this batch will be dropped
-							{Time: 70, Value: 0.3},                    // because processing of entire batch will stop
-						},
-						ExpectedCount: func() *int { var expectedCount = 1; return &expectedCount }(),
-					}}},
-				tsdbtest.TestOption{
-					Key:   "override_test_name",
-					Value: fmt.Sprintf("IG-13146-%s", timestamp)},
-				tsdbtest.TestOption{
-					Key: "expected_error_contains_string",
-					// Note, the expected error message should align with pkg/appender/ingest.go:308
-					Value: "trying to ingest values of incompatible data type"}),
-		},
 	}
 
 	for _, test := range testCases {
@@ -186,24 +140,11 @@ func testIngestDataCase(t *testing.T, testParams tsdbtest.TestParams) {
 		}
 
 		if _, err := appender.WaitForCompletion(0); err != nil {
-			if !isExpected(testParams, err) {
-				t.Fatalf("Failed to wait for appender completion. reason: %s", err)
-			}
+			t.Fatalf("Failed to wait for appender completion. reason: %s", err)
 		}
 
-		expectedCount := len(dp.Data)
-		if dp.ExpectedCount != nil {
-			expectedCount = *dp.ExpectedCount
-		}
-		tsdbtest.ValidateCountOfSamples(t, adapter, dp.Name, expectedCount, from, to, -1)
+		tsdbtest.ValidateCountOfSamples(t, adapter, dp.Name, len(dp.Data), from, to, -1)
 	}
-}
-
-func isExpected(testParams tsdbtest.TestParams, actualErr error) bool {
-	if errMsg, ok := testParams["expected_error_contains_string"]; ok {
-		return strings.Contains(actualErr.Error(), fmt.Sprintf("%v", errMsg))
-	}
-	return false
 }
 
 func TestIngestDataWithSameTimestamp(t *testing.T) {
@@ -255,125 +196,6 @@ func TestIngestDataWithSameTimestamp(t *testing.T) {
 	}
 
 	tsdbtest.ValidateCountOfSamples(t, adapter, "", 2, baseTime-1*tsdbtest.HoursInMillis, baseTime+1*tsdbtest.HoursInMillis, -1)
-}
-
-// test for http://jira.iguazeng.com:8080/browse/IG-14978
-func TestIngestWithTimeDeltaBiggerThen32Bit(t *testing.T) {
-	data := []tsdbtest.DataPoint{
-		{Time: 1384786967945, Value: 1.0},
-		{Time: 1392818567945, Value: 2.0}}
-	testParams := tsdbtest.NewTestParams(t,
-		tsdbtest.TestOption{
-			Key: tsdbtest.OptTimeSeries,
-			Value: tsdbtest.TimeSeries{tsdbtest.Metric{
-				Name:   "cpu",
-				Labels: utils.LabelsFromStringList("os", "linux"),
-				Data:   data},
-			}})
-
-	schema, err := schema.NewSchema(testParams.V3ioConfig(), "1/h", "1h", "", "")
-	defer tsdbtest.SetUpWithDBConfig(t, schema, testParams)()
-
-	adapter, err := NewV3ioAdapter(testParams.V3ioConfig(), nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to create v3io adapter. reason: %s", err)
-	}
-
-	appender, err := adapter.Appender()
-	if err != nil {
-		t.Fatalf("Failed to get appender. reason: %s", err)
-	}
-
-	for _, dp := range testParams.TimeSeries() {
-		labels := utils.Labels{utils.Label{Name: "__name__", Value: dp.Name}}
-		labels = append(labels, dp.Labels...)
-
-		ref, err := appender.Add(labels, dp.Data[0].Time, dp.Data[0].Value)
-		if err != nil {
-			t.Fatalf("Failed to add data to appender. reason: %s", err)
-		}
-
-		for _, curr := range dp.Data[1:] {
-			appender.AddFast(labels, ref, curr.Time, curr.Value)
-		}
-
-		if _, err := appender.WaitForCompletion(0); err != nil {
-			t.Fatalf("Failed to wait for appender completion. reason: %s", err)
-		}
-	}
-
-	querier, _ := adapter.QuerierV2()
-	iter, _ := querier.Select(&pquerier.SelectParams{From: 0,
-		To: time.Now().Unix() * 1000})
-	for iter.Next() {
-		dataIter := iter.At().Iterator()
-		actual, err := iteratorToSlice(dataIter)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		assert.ElementsMatch(t, data, actual,
-			"result data didn't match. \nExpected: %v\n Actual: %v", data, actual)
-	}
-
-	if iter.Err() != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestIngestVarTypeWithTimeDeltaBiggerThen32Bit(t *testing.T) {
-	data := []string{"a", "b"}
-	times := []int64{1384786967945, 1392818567945}
-
-	testParams := tsdbtest.NewTestParams(t)
-
-	schema, err := schema.NewSchema(testParams.V3ioConfig(), "1/h", "1h", "", "")
-	defer tsdbtest.SetUpWithDBConfig(t, schema, testParams)()
-
-	adapter, err := NewV3ioAdapter(testParams.V3ioConfig(), nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to create v3io adapter. reason: %s", err)
-	}
-
-	appender, err := adapter.Appender()
-	if err != nil {
-		t.Fatalf("Failed to get appender. reason: %s", err)
-	}
-
-	labels := utils.Labels{utils.Label{Name: "__name__", Value: "metric_1"}}
-	for i, v := range data {
-		_, err := appender.Add(labels, times[i], v)
-		if err != nil {
-			t.Fatalf("Failed to add data to appender. reason: %s", err)
-		}
-
-	}
-
-	if _, err := appender.WaitForCompletion(0); err != nil {
-		t.Fatalf("Failed to wait for appender completion. reason: %s", err)
-	}
-
-	querier, _ := adapter.QuerierV2()
-	iter, _ := querier.Select(&pquerier.SelectParams{From: 0,
-		To: time.Now().Unix() * 1000})
-	var seriesCount int
-	for iter.Next() {
-		seriesCount++
-		iter := iter.At().Iterator()
-		var i int
-		for iter.Next() {
-			time, value := iter.AtString()
-			assert.Equal(t, times[i], time, "time does not match at index %v", i)
-			assert.Equal(t, data[i], value, "value does not match at index %v", i)
-			i++
-		}
-	}
-
-	assert.Equal(t, 1, seriesCount, "series count didn't match expected")
-
-	if iter.Err() != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestWriteMetricWithDashInName(t *testing.T) {
@@ -733,18 +555,8 @@ func testQueryDataCase(test *testing.T, testParams tsdbtest.TestParams, filter s
 			if err != nil {
 				test.Fatal(err)
 			}
-
-			for _, data := range expected[currentAggregate] {
-				var equalCount = 0
-				for _, dp := range actual {
-					if dp.Equals(data) {
-						equalCount++
-						continue
-					}
-				}
-				assert.Equal(test, equalCount, len(expected[currentAggregate]),
-					"Check failed for aggregate='%s'. Query aggregates: %s", currentAggregate, queryAggregates)
-			}
+			assert.ElementsMatch(test, expected[currentAggregate], actual,
+				"Check failed for aggregate='%s'. Query aggregates: %s", currentAggregate, queryAggregates)
 		}
 
 		if set.Err() != nil {
@@ -870,14 +682,7 @@ func testQueryDataOverlappingWindowCase(test *testing.T, v3ioConfig *config.V3io
 		}
 		assert.EqualValues(test, len(windows), len(actual))
 		for _, data := range expected[agg] {
-			var equalCount = 0
-			for _, dp := range actual {
-				if dp.Equals(data) {
-					equalCount++
-					continue
-				}
-			}
-			assert.Equal(test, equalCount, len(expected[agg]))
+			assert.Contains(test, actual, data)
 		}
 	}
 
@@ -958,17 +763,7 @@ func TestIgnoreNaNWhenSeekingAggSeries(t *testing.T) {
 			}
 			actual = append(actual, tsdbtest.DataPoint{Time: t1, Value: v1})
 		}
-
-		for _, data := range expected[agg] {
-			var equalCount = 0
-			for _, dp := range actual {
-				if dp.Equals(data) {
-					equalCount++
-					continue
-				}
-			}
-			assert.Equal(t, equalCount, len(expected[agg]))
-		}
+		assert.ElementsMatch(t, expected[agg], actual)
 	}
 
 	if set.Err() != nil {
@@ -1022,7 +817,7 @@ func TestDeleteTSDB(t *testing.T) {
 
 	schema := testutils.CreateSchema(t, "count,sum")
 	v3ioConfig.TablePath = tsdbtest.PrefixTablePath(t.Name())
-	if err := CreateTSDB(v3ioConfig, schema, nil); err != nil {
+	if err := CreateTSDB(v3ioConfig, schema); err != nil {
 		v3ioConfigAsJson, _ := json.MarshalIndent(v3ioConfig, "", "  ")
 		t.Fatalf("Failed to create TSDB. Reason: %s\nConfiguration:\n%s", err, string(v3ioConfigAsJson))
 	}
@@ -1052,72 +847,6 @@ func TestDeleteTSDB(t *testing.T) {
 	if res := <-responseChan; res.Error == nil {
 		t.Fatal("Did not delete TSDB properly")
 	}
-}
-
-func TestIngestDataFloatThenString(t *testing.T) {
-	testParams := tsdbtest.NewTestParams(t)
-
-	defer tsdbtest.SetUp(t, testParams)()
-
-	adapter, err := NewV3ioAdapter(testParams.V3ioConfig(), nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to create v3io adapter. reason: %s", err)
-	}
-
-	appender, err := adapter.Appender()
-	if err != nil {
-		t.Fatalf("Failed to get appender. reason: %s", err)
-	}
-
-	labels := utils.Labels{utils.Label{Name: "__name__", Value: "cpu"}}
-	_, err = appender.Add(labels, 1532940510000, 12.0)
-	if err != nil {
-		t.Fatalf("Failed to add data to appender. reason: %s", err)
-	}
-
-	_, err = appender.Add(labels, 1532940610000, "tal")
-	if err == nil {
-		t.Fatal("expected failure but finished successfully")
-	}
-
-	if _, err := appender.WaitForCompletion(0); err != nil {
-		t.Fatalf("Failed to wait for appender completion. reason: %s", err)
-	}
-
-	tsdbtest.ValidateCountOfSamples(t, adapter, "cpu", 1, 0, 1532950510000, -1)
-}
-
-func TestIngestDataStringThenFloat(t *testing.T) {
-	testParams := tsdbtest.NewTestParams(t)
-
-	defer tsdbtest.SetUp(t, testParams)()
-
-	adapter, err := NewV3ioAdapter(testParams.V3ioConfig(), nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to create v3io adapter. reason: %s", err)
-	}
-
-	appender, err := adapter.Appender()
-	if err != nil {
-		t.Fatalf("Failed to get appender. reason: %s", err)
-	}
-
-	labels := utils.Labels{utils.Label{Name: "__name__", Value: "cpu"}}
-	_, err = appender.Add(labels, 1532940510000, "tal")
-	if err != nil {
-		t.Fatalf("Failed to add data to appender. reason: %s", err)
-	}
-
-	_, err = appender.Add(labels, 1532940610000, 666.0)
-	if err == nil {
-		t.Fatal("expected failure but finished successfully")
-	}
-
-	if _, err := appender.WaitForCompletion(0); err != nil {
-		t.Fatalf("Failed to wait for appender completion. reason: %s", err)
-	}
-
-	tsdbtest.ValidateCountOfSamples(t, adapter, "cpu", 1, 0, 1532950510000, -1)
 }
 
 func iteratorToSlice(it chunkenc.Iterator) ([]tsdbtest.DataPoint, error) {

@@ -49,13 +49,7 @@ func (s *V3ioSeries) Labels() utils.Labels { return s.lset }
 // Get the unique series key for sorting
 func (s *V3ioSeries) GetKey() uint64 {
 	if s.hash == 0 {
-		val, err := s.lset.HashWithMetricName()
-		if err != nil {
-			s.set.logger.Error(err)
-			return 0
-		}
-		s.hash = val
-
+		s.hash = s.lset.HashWithMetricName()
 	}
 	return s.hash
 }
@@ -263,7 +257,7 @@ func NewAggrSeries(set *V3ioSeriesSet, aggr aggregate.AggrType) *V3ioSeries {
 
 type aggrSeriesIterator struct {
 	set      *V3ioSeriesSet
-	aggrSet  *aggregate.Set
+	aggrSet  *aggregate.AggregateSet
 	aggrType aggregate.AggrType
 	index    int
 	err      error
