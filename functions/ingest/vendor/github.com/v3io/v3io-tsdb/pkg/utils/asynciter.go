@@ -48,16 +48,14 @@ type AsyncItemsCursor struct {
 	container    v3io.Container
 	logger       logger.Logger
 
-	responseChan       chan *v3io.Response
-	workers            int
-	totalSegments      int
-	lastShards         int
-	Cnt                int
-	numberOfPartitions int
+	responseChan  chan *v3io.Response
+	workers       int
+	totalSegments int
+	lastShards    int
+	Cnt           int
 }
 
-func NewAsyncItemsCursorMultiplePartitions(container v3io.Container, input *v3io.GetItemsInput, workers int,
-	shardingKeys []string, logger logger.Logger, partitions []string) (*AsyncItemsCursor, error) {
+func NewAsyncItemsCursor(container v3io.Container, input *v3io.GetItemsInput, workers int, shardingKeys []string, logger logger.Logger) (*AsyncItemsCursor, error) {
 
 	// TODO: use workers from Context.numWorkers (if no ShardingKey)
 	if workers == 0 || input.ShardingKey != "" {
@@ -65,61 +63,51 @@ func NewAsyncItemsCursorMultiplePartitions(container v3io.Container, input *v3io
 	}
 
 	newAsyncItemsCursor := &AsyncItemsCursor{
-		container:          container,
-		input:              input,
-		responseChan:       make(chan *v3io.Response, 1000),
-		workers:            workers,
-		logger:             logger.GetChild("AsyncItemsCursor"),
-		numberOfPartitions: len(partitions),
+		container:    container,
+		input:        input,
+		responseChan: make(chan *v3io.Response, 1000),
+		workers:      workers,
+		logger:       logger.GetChild("AsyncItemsCursor"),
 	}
 
 	if len(shardingKeys) > 0 {
 		newAsyncItemsCursor.workers = len(shardingKeys)
 
-		for _, partition := range partitions {
-			for i := 0; i < newAsyncItemsCursor.workers; i++ {
-				input := v3io.GetItemsInput{
-					Path:           partition,
-					AttributeNames: input.AttributeNames,
-					Filter:         input.Filter,
-					ShardingKey:    shardingKeys[i],
-				}
-				_, err := container.GetItems(&input, &input, newAsyncItemsCursor.responseChan)
+		for i := 0; i < newAsyncItemsCursor.workers; i++ {
+			input := v3io.GetItemsInput{
+				Path:           input.Path,
+				AttributeNames: input.AttributeNames,
+				Filter:         input.Filter,
+				ShardingKey:    shardingKeys[i],
+			}
+			_, err := container.GetItems(&input, &input, newAsyncItemsCursor.responseChan)
 
-				if err != nil {
-					return nil, err
-				}
+			if err != nil {
+				return nil, err
 			}
 		}
 
 		return newAsyncItemsCursor, nil
 	}
 
-	for _, partition := range partitions {
-		for i := 0; i < newAsyncItemsCursor.workers; i++ {
-			newAsyncItemsCursor.totalSegments = workers
-			input := v3io.GetItemsInput{
-				Path:           partition,
-				AttributeNames: input.AttributeNames,
-				Filter:         input.Filter,
-				TotalSegments:  newAsyncItemsCursor.totalSegments,
-				Segment:        i,
-			}
-			_, err := container.GetItems(&input, &input, newAsyncItemsCursor.responseChan)
+	for i := 0; i < newAsyncItemsCursor.workers; i++ {
+		newAsyncItemsCursor.totalSegments = workers
+		input := v3io.GetItemsInput{
+			Path:           input.Path,
+			AttributeNames: input.AttributeNames,
+			Filter:         input.Filter,
+			TotalSegments:  newAsyncItemsCursor.totalSegments,
+			Segment:        i,
+		}
+		_, err := container.GetItems(&input, &input, newAsyncItemsCursor.responseChan)
 
-			if err != nil {
-				// TODO: proper exit, release requests which passed
-				return nil, err
-			}
+		if err != nil {
+			// TODO: proper exit, release requests which passed
+			return nil, err
 		}
 	}
 
 	return newAsyncItemsCursor, nil
-}
-
-func NewAsyncItemsCursor(container v3io.Container, input *v3io.GetItemsInput, workers int, shardingKeys []string,
-	logger logger.Logger) (*AsyncItemsCursor, error) {
-	return NewAsyncItemsCursorMultiplePartitions(container, input, workers, shardingKeys, logger, []string{input.Path})
 }
 
 // error returns the last error
@@ -160,7 +148,7 @@ func (ic *AsyncItemsCursor) NextItem() (v3io.Item, error) {
 		}
 
 		// are there any more items up stream? did all the shards complete ?
-		if ic.lastShards == ic.workers*ic.numberOfPartitions {
+		if ic.lastShards == ic.workers {
 			ic.currentError = nil
 			return nil, nil
 		}
@@ -201,15 +189,9 @@ func (ic *AsyncItemsCursor) processResponse() error {
 
 	// until IGZ-2.0 there is a bug in Nginx regarding range-scan, the following code is a mitigation for it.
 	if *conf.DisableNginxMitigation {
-		err := ic.sendNextGetItemsOld(resp)
-		if err != nil {
-			return err
-		}
+		ic.sendNextGetItemsOld(resp)
 	} else {
-		err := ic.sendNextGetItemsNew(resp)
-		if err != nil {
-			return err
-		}
+		ic.sendNextGetItemsNew(resp)
 	}
 
 	return nil
@@ -262,8 +244,9 @@ func (ic *AsyncItemsCursor) sendNextGetItemsNew(resp *v3io.Response) error {
 				if getItemsResp.Last {
 					ic.lastShards++
 					return nil
+				} else {
+					input.Marker = getItemsResp.NextMarker
 				}
-				input.Marker = getItemsResp.NextMarker
 			}
 		} else {
 			// set next marker

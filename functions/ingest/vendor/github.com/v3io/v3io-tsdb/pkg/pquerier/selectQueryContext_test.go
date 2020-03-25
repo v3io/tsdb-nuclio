@@ -163,6 +163,6 @@ func TestNegativeCreateColumnSpecs(t *testing.T) {
 }
 
 func toAggr(str string) aggregate.AggrType {
-	aggr, _ := aggregate.FromString(str)
+	aggr, _ := aggregate.AggregateFromString(str)
 	return aggr
 }

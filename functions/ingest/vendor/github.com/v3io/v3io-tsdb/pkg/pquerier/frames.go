@@ -7,7 +7,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/v3io/frames"
-	"github.com/v3io/frames/pb"
 	"github.com/v3io/v3io-tsdb/pkg/aggregate"
 	"github.com/v3io/v3io-tsdb/pkg/chunkenc"
 	"github.com/v3io/v3io-tsdb/pkg/config"
@@ -23,7 +22,7 @@ type frameIterator struct {
 }
 
 // create new frame set iterator, frame iter has a SeriesSet interface (for Prometheus) plus columnar interfaces
-func newFrameIterator(ctx *selectQueryContext) (*frameIterator, error) {
+func NewFrameIterator(ctx *selectQueryContext) (*frameIterator, error) {
 	if !ctx.isRawQuery() {
 		for _, f := range ctx.frameList {
 			if err := f.finishAllColumns(); err != nil {
@@ -105,7 +104,7 @@ func (fi *frameIterator) Err() error {
 }
 
 // data frame, holds multiple value columns and an index (time) column
-func newDataFrame(columnsSpec []columnMeta, indexColumn Column, lset utils.Labels, hash uint64, isRawQuery bool, columnSize int, useServerAggregates, showAggregateLabel bool) (*dataFrame, error) {
+func NewDataFrame(columnsSpec []columnMeta, indexColumn Column, lset utils.Labels, hash uint64, isRawQuery bool, columnSize int, useServerAggregates, showAggregateLabel bool) (*dataFrame, error) {
 	df := &dataFrame{lset: lset, hash: hash, isRawSeries: isRawQuery, showAggregateLabel: showAggregateLabel}
 	// is raw query
 	if isRawQuery {
@@ -185,7 +184,7 @@ func createColumn(col columnMeta, columnSize int, useServerAggregates bool) (Col
 			column = NewVirtualColumn(col.getColumnName(), col, columnSize, function)
 		}
 	} else {
-		column = newDataColumn(col.getColumnName(), col, columnSize, frames.FloatType)
+		column = NewDataColumn(col.getColumnName(), col, columnSize, frames.FloatType)
 	}
 
 	return column, nil
@@ -194,8 +193,9 @@ func createColumn(col columnMeta, columnSize int, useServerAggregates bool) (Col
 func getAggreagteFunction(aggrType aggregate.AggrType, useServerAggregates bool) (func(interface{}, interface{}) interface{}, error) {
 	if useServerAggregates {
 		return aggregate.GetServerAggregationsFunction(aggrType)
+	} else {
+		return aggregate.GetClientAggregationsFunction(aggrType)
 	}
-	return aggregate.GetClientAggregationsFunction(aggrType)
 }
 
 func fillDependantColumns(wantedColumn Column, df *dataFrame) {
@@ -247,7 +247,6 @@ type dataFrame struct {
 	index                  Column
 	columnByName           map[string]int // name -> index in columns
 	nonEmptyRowsIndicators []bool
-	nullValuesMaps         []*pb.NullValuesMap
 
 	metrics             map[string]struct{}
 	metricToCountColumn map[string]Column
@@ -380,18 +379,19 @@ func (d *dataFrame) Index() (Column, error) {
 func (d *dataFrame) TimeSeries(i int) (utils.Series, error) {
 	if d.isRawSeries {
 		return d.rawColumns[i], nil
-	}
-	currentColumn, err := d.ColumnAt(i)
-	if err != nil {
-		return nil, err
-	}
+	} else {
+		currentColumn, err := d.ColumnAt(i)
+		if err != nil {
+			return nil, err
+		}
 
-	return NewDataFrameColumnSeries(d.index,
-		currentColumn,
-		d.metricToCountColumn[currentColumn.GetColumnSpec().metric],
-		d.Labels(),
-		d.hash,
-		d.showAggregateLabel), nil
+		return NewDataFrameColumnSeries(d.index,
+			currentColumn,
+			d.metricToCountColumn[currentColumn.GetColumnSpec().metric],
+			d.Labels(),
+			d.hash,
+			d.showAggregateLabel), nil
+	}
 }
 
 // Creates Frames.columns out of tsdb columns.
@@ -413,10 +413,7 @@ func (d *dataFrame) finishAllColumns() error {
 				case *ConcreteColumn, *dataColumn:
 					value, err := col.getBuilder().At(i)
 					if err != nil || value == nil {
-						err := col.getBuilder().Set(i, math.NaN())
-						if err != nil {
-							return errors.Wrap(err, fmt.Sprintf("could not create new column at index %d", i))
-						}
+						col.getBuilder().Set(i, math.NaN())
 					}
 				}
 			}
@@ -471,18 +468,16 @@ func (d *dataFrame) finishAllColumns() error {
 //
 func (d *dataFrame) rawSeriesToColumns() error {
 	var timeData []time.Time
-	var currentTime int64
-	numberOfRawColumns := len(d.rawColumns)
-	columns := make([]frames.ColumnBuilder, numberOfRawColumns)
-	nonExhaustedIterators := numberOfRawColumns
-	seriesToDataType := make([]frames.DType, numberOfRawColumns)
-	seriesToDefaultValue := make([]interface{}, numberOfRawColumns)
-	nextTime := int64(math.MaxInt64)
-	seriesHasMoreData := make([]bool, numberOfRawColumns)
-	emptyMetrics := make(map[int]string)
 
-	d.nullValuesMaps = make([]*pb.NullValuesMap, 0)
-	nullValuesRowIndex := -1
+	columns := make([]frames.ColumnBuilder, len(d.rawColumns))
+	nonExhaustedIterators := len(d.rawColumns)
+	seriesToDataType := make([]frames.DType, len(d.rawColumns))
+	seriesTodefaultValue := make([]interface{}, len(d.rawColumns))
+	currentTime := int64(math.MaxInt64)
+	nextTime := int64(math.MaxInt64)
+	seriesHasMoreData := make([]bool, len(d.rawColumns))
+
+	emptyMetrics := make(map[int]string)
 
 	for i, rawSeries := range d.rawColumns {
 		if rawSeries == nil {
@@ -516,12 +511,12 @@ func (d *dataFrame) rawSeriesToColumns() error {
 			columns[i] = frames.NewSliceColumnBuilder(rawSeries.Labels().Get(config.PrometheusMetricNameAttribute),
 				frames.StringType, 0)
 			seriesToDataType[i] = frames.StringType
-			seriesToDefaultValue[i] = ""
+			seriesTodefaultValue[i] = ""
 		} else {
 			columns[i] = frames.NewSliceColumnBuilder(rawSeries.Labels().Get(config.PrometheusMetricNameAttribute),
 				frames.FloatType, 0)
 			seriesToDataType[i] = frames.FloatType
-			seriesToDefaultValue[i] = math.NaN()
+			seriesTodefaultValue[i] = math.NaN()
 		}
 	}
 
@@ -529,10 +524,6 @@ func (d *dataFrame) rawSeriesToColumns() error {
 		currentTime = nextTime
 		nextTime = int64(math.MaxInt64)
 		timeData = append(timeData, time.Unix(currentTime/1000, (currentTime%1000)*1e6))
-
-		// add new row to null values map
-		d.nullValuesMaps = append(d.nullValuesMaps, &pb.NullValuesMap{NullColumns: make(map[string]bool)})
-		nullValuesRowIndex++
 
 		for seriesIndex, rawSeries := range d.rawColumns {
 			if rawSeries == nil {
@@ -550,10 +541,7 @@ func (d *dataFrame) rawSeriesToColumns() error {
 			}
 
 			if t == currentTime {
-				e := columns[seriesIndex].Append(v)
-				if e != nil {
-					return errors.Wrap(e, fmt.Sprintf("could not append value %v", v))
-				}
+				columns[seriesIndex].Append(v)
 				if iter.Next() {
 					t, _ = iter.At()
 				} else {
@@ -561,11 +549,7 @@ func (d *dataFrame) rawSeriesToColumns() error {
 					seriesHasMoreData[seriesIndex] = false
 				}
 			} else {
-				e := columns[seriesIndex].Append(seriesToDefaultValue[seriesIndex])
-				if e != nil {
-					return errors.Wrap(e, fmt.Sprintf("could not append from default value %v", seriesToDefaultValue[seriesIndex]))
-				}
-				d.nullValuesMaps[nullValuesRowIndex].NullColumns[columns[seriesIndex].Name()] = true
+				columns[seriesIndex].Append(seriesTodefaultValue[seriesIndex])
 			}
 
 			if seriesHasMoreData[seriesIndex] && t < nextTime {
@@ -576,14 +560,10 @@ func (d *dataFrame) rawSeriesToColumns() error {
 
 	numberOfRows := len(timeData)
 	colSpec := columnMeta{metric: "time"}
-	d.index = newDataColumn("time", colSpec, numberOfRows, frames.TimeType)
-	e := d.index.SetData(timeData, numberOfRows)
-	if e != nil {
-		return errors.Wrap(e, fmt.Sprintf("could not set data, timeData=%v, numberOfRows=%v", timeData, numberOfRows))
-	}
+	d.index = NewDataColumn("time", colSpec, numberOfRows, frames.TimeType)
+	d.index.SetData(timeData, numberOfRows)
 
-	d.columns = make([]Column, numberOfRawColumns)
-
+	d.columns = make([]Column, len(d.rawColumns))
 	for i, series := range d.rawColumns {
 		if series == nil {
 			continue
@@ -591,7 +571,7 @@ func (d *dataFrame) rawSeriesToColumns() error {
 
 		name := series.Labels().Get(config.PrometheusMetricNameAttribute)
 		spec := columnMeta{metric: name}
-		col := newDataColumn(name, spec, numberOfRows, seriesToDataType[i])
+		col := NewDataColumn(name, spec, numberOfRows, seriesToDataType[i])
 		col.framesCol = columns[i].Finish()
 		d.columns[i] = col
 	}
@@ -603,18 +583,13 @@ func (d *dataFrame) rawSeriesToColumns() error {
 		}
 		for index, metricName := range emptyMetrics {
 			spec := columnMeta{metric: metricName}
-			col := newDataColumn(metricName, spec, numberOfRows, frames.FloatType)
+			col := NewDataColumn(metricName, spec, numberOfRows, frames.FloatType)
 			framesCol, err := frames.NewSliceColumn(metricName, nullValues)
 			if err != nil {
 				return errors.Wrap(err, fmt.Sprintf("could not create empty column '%v'", metricName))
 			}
 			col.framesCol = framesCol
 			d.columns[index] = col
-
-			// mark empty columns
-			for i := 0; i < numberOfRows; i++ {
-				d.nullValuesMaps[i].NullColumns[col.name] = true
-			}
 		}
 	}
 
@@ -639,7 +614,7 @@ func (d *dataFrame) GetFrame() (frames.Frame, error) {
 		}
 	}
 
-	return frames.NewFrameWithNullValues(framesColumns, []frames.Column{d.index.FramesColumn()}, d.Labels().Map(), d.nullValuesMaps)
+	return frames.NewFrame(framesColumns, []frames.Column{d.index.FramesColumn()}, d.Labels().Map())
 }
 
 // Column object, store a single value or index column/array
@@ -727,7 +702,7 @@ func (c *basicColumn) GetInterpolationFunction() InterpolationFunction {
 	return c.interpolationFunction
 }
 
-func newDataColumn(name string, colSpec columnMeta, size int, datatype frames.DType) *dataColumn {
+func NewDataColumn(name string, colSpec columnMeta, size int, datatype frames.DType) *dataColumn {
 	dc := &dataColumn{basicColumn: basicColumn{name: name, spec: colSpec, size: size,
 		interpolationFunction: GetInterpolateFunc(colSpec.interpolationType, colSpec.interpolationTolerance),
 		builder:               frames.NewSliceColumnBuilder(name, datatype, size)}}

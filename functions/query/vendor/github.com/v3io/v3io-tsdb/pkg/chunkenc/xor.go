@@ -160,8 +160,6 @@ type xorAppender struct {
 
 	leading  uint8
 	trailing uint8
-
-	isPreviousNewSeries bool
 }
 
 func (a *xorAppender) Encoding() Encoding {
@@ -175,18 +173,7 @@ func (a *xorAppender) Chunk() Chunk {
 func (a *xorAppender) Append(t int64, vvar interface{}) {
 	var tDelta uint64
 	num := *a.samples
-
-	var v float64
-	switch typedValue := vvar.(type) {
-	case int:
-		v = float64(typedValue)
-	case float64:
-		v = typedValue
-	default:
-		a.logger.Warn("Discarding sample {time: %d, value: %v}, as it's value is of incompatible data type. "+
-			"Reason: expected 'float' actual '%T'.", t, vvar, vvar)
-		return
-	}
+	v := vvar.(float64)
 
 	// Do not append if sample is too old.
 	if t < a.t {
@@ -194,22 +181,20 @@ func (a *xorAppender) Append(t int64, vvar interface{}) {
 		return
 	}
 
-	// We write time deltas as 32 bits (for compression) if the delta is too large we'll start a new series
-	tDelta = uint64(t - a.t)
-	shouldStartNewSeries := num == 0 || bits.Len64(tDelta) >= 32
-
-	if shouldStartNewSeries {
+	if num == 0 {
 		// add a signature 11111 to indicate start of cseries in case we put few in the same chunk (append to existing)
 		a.b.writeBits(0x1f, 5)
 		a.b.writeBits(uint64(t), 51)
 		a.b.writeBits(math.Float64bits(v), 64)
-		a.isPreviousNewSeries = true
-		tDelta = 0 // saving time delta for the first element is redundant
-	} else if a.isPreviousNewSeries {
+
+	} else if num == 1 {
+		tDelta = uint64(t - a.t)
+
 		a.b.writeBits(tDelta, 32)
 		a.writeVDelta(v)
-		a.isPreviousNewSeries = false
+
 	} else {
+		tDelta = uint64(t - a.t)
 		dod := int64(tDelta - a.tDelta)
 
 		// Gorilla has a max resolution of seconds, Prometheus milliseconds.
@@ -232,7 +217,6 @@ func (a *xorAppender) Append(t int64, vvar interface{}) {
 		}
 
 		a.writeVDelta(v)
-
 	}
 
 	a.t = t
