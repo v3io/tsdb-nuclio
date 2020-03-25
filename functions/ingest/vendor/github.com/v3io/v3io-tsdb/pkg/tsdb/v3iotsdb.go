@@ -49,7 +49,7 @@ import (
 )
 
 const (
-	defaultHttpTimeout = 30 * time.Second
+	defaultHTTPTimeout = 30 * time.Second
 
 	errorCodeString              = "ErrorCode"
 	falseConditionOuterErrorCode = "184549378" // todo: change codes
@@ -61,7 +61,7 @@ type V3ioAdapter struct {
 	startTimeMargin int64
 	logger          logger.Logger
 	container       v3io.Container
-	HttpTimeout     time.Duration
+	HTTPTimeout     time.Duration
 	MetricsCache    *appender.MetricsCache
 	cfg             *config.V3ioConfig
 	partitionMngr   *partmgr.PartitionManager
@@ -76,15 +76,17 @@ type DeleteParams struct {
 	IgnoreErrors bool
 }
 
-func CreateTSDB(cfg *config.V3ioConfig, schema *config.Schema) error {
+func CreateTSDB(cfg *config.V3ioConfig, schema *config.Schema, container v3io.Container) error {
 
 	lgr, _ := utils.NewLogger(cfg.LogLevel)
-	httpTimeout := parseHttpTimeout(cfg, lgr)
-	container, err := utils.CreateContainer(lgr, cfg, httpTimeout)
-	if err != nil {
-		return errors.Wrap(err, "Failed to create a data container.")
+	httpTimeout := parseHTTPTimeout(cfg, lgr)
+	var err error
+	if container == nil {
+		container, err = utils.CreateContainer(lgr, cfg, httpTimeout)
+		if err != nil {
+			return errors.Wrap(err, "Failed to create a data container.")
+		}
 	}
-
 	data, err := json.Marshal(schema)
 	if err != nil {
 		return errors.Wrap(err, "Failed to marshal the TSDB schema file.")
@@ -101,23 +103,21 @@ func CreateTSDB(cfg *config.V3ioConfig, schema *config.Schema) error {
 
 	err = container.PutObjectSync(&v3io.PutObjectInput{Path: path, Body: data, DataPlaneInput: dataPlaneInput})
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create a TSDB schema at path '%s/%s/%s'.", cfg.WebApiEndpoint, cfg.Container, path)
+		return errors.Wrapf(err, "Failed to create a TSDB schema at path '%s/%s/%s'.", cfg.WebAPIEndpoint, cfg.Container, path)
 	}
 	return err
 }
 
-func parseHttpTimeout(cfg *config.V3ioConfig, logger logger.Logger) time.Duration {
-	if cfg.HttpTimeout == "" {
-		return defaultHttpTimeout
-	} else {
-		timeout, err := time.ParseDuration(cfg.HttpTimeout)
-		if err != nil {
-			logger.Warn("Failed to parse httpTimeout '%s'. Defaulting to %d millis.", cfg.HttpTimeout, defaultHttpTimeout/time.Millisecond)
-			return defaultHttpTimeout
-		} else {
-			return timeout
-		}
+func parseHTTPTimeout(cfg *config.V3ioConfig, logger logger.Logger) time.Duration {
+	if cfg.HTTPTimeout == "" {
+		return defaultHTTPTimeout
 	}
+	timeout, err := time.ParseDuration(cfg.HTTPTimeout)
+	if err != nil {
+		logger.Warn("Failed to parse httpTimeout '%s'. Defaulting to %d millis.", cfg.HTTPTimeout, defaultHTTPTimeout/time.Millisecond)
+		return defaultHTTPTimeout
+	}
+	return timeout
 }
 
 // Create a new TSDB adapter, similar to Prometheus TSDB adapter but with a few
@@ -136,12 +136,12 @@ func NewV3ioAdapter(cfg *config.V3ioConfig, container v3io.Container, logger log
 		}
 	}
 
-	newV3ioAdapter.HttpTimeout = parseHttpTimeout(cfg, logger)
+	newV3ioAdapter.HTTPTimeout = parseHTTPTimeout(cfg, logger)
 
 	if container != nil {
 		newV3ioAdapter.container = container
 	} else {
-		newV3ioAdapter.container, err = utils.CreateContainer(newV3ioAdapter.logger, cfg, newV3ioAdapter.HttpTimeout)
+		newV3ioAdapter.container, err = utils.CreateContainer(newV3ioAdapter.logger, cfg, newV3ioAdapter.HTTPTimeout)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to create V3IO data container")
 		}
@@ -152,13 +152,16 @@ func NewV3ioAdapter(cfg *config.V3ioConfig, container v3io.Container, logger log
 	return &newV3ioAdapter, err
 }
 
-func NewContainer(v3ioUrl string, numWorkers int, accessKey string, username string, password string, containerName string, logger logger.Logger) (v3io.Container, error) {
-	ctx, err := v3iohttp.NewContext(logger, v3iohttp.NewDefaultClient(), &v3io.NewContextInput{NumWorkers: numWorkers})
+func NewContainer(v3ioURL string, numWorkers int, accessKey string, username string, password string, containerName string, logger logger.Logger) (v3io.Container, error) {
+	newContextInput := &v3iohttp.NewContextInput{
+		NumWorkers: numWorkers,
+	}
+	ctx, err := v3iohttp.NewContext(logger, newContextInput)
 	if err != nil {
 		return nil, err
 	}
 
-	session, err := ctx.NewSession(&v3io.NewSessionInput{URL: v3ioUrl, Username: username, Password: password, AccessKey: accessKey})
+	session, err := ctx.NewSession(&v3io.NewSessionInput{URL: v3ioURL, Username: username, Password: password, AccessKey: accessKey})
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create session.")
 	}
@@ -184,14 +187,13 @@ func (a *V3ioAdapter) GetContainer() (v3io.Container, string) {
 
 func (a *V3ioAdapter) connect() error {
 
-	fullpath := fmt.Sprintf("%s/%s/%s", a.cfg.WebApiEndpoint, a.cfg.Container, a.cfg.TablePath)
+	fullpath := fmt.Sprintf("%s/%s/%s", a.cfg.WebAPIEndpoint, a.cfg.Container, a.cfg.TablePath)
 	resp, err := a.container.GetObjectSync(&v3io.GetObjectInput{Path: pathUtil.Join(a.cfg.TablePath, config.SchemaConfigFileName)})
 	if err != nil {
 		if utils.IsNotExistsError(err) {
 			return errors.Errorf("No TSDB schema file found at '%s'.", fullpath)
-		} else {
-			return errors.Wrapf(err, "Failed to read a TSDB schema from '%s'.", fullpath)
 		}
+		return errors.Wrapf(err, "Failed to read a TSDB schema from '%s'.", fullpath)
 	}
 
 	tableSchema := config.Schema{}
@@ -241,7 +243,7 @@ func (a *V3ioAdapter) Appender() (Appender, error) {
 }
 
 func (a *V3ioAdapter) StartTime() (int64, error) {
-	startTime := int64(time.Now().Unix() * 1000)
+	startTime := time.Now().Unix() * 1000
 	return startTime - 1000*3600*24*1000, nil // TODO: from config or DB w default
 }
 
@@ -699,9 +701,8 @@ func getEncoding(itemToDelete v3io.Item) (chunkenc.Encoding, error) {
 		intEncoding, err := strconv.Atoi(encodingStr)
 		if err != nil {
 			return 0, fmt.Errorf("error parsing encoding type of chunk, got: %v, error: %v", encodingStr, err)
-		} else {
-			encoding = chunkenc.Encoding(intEncoding)
 		}
+		encoding = chunkenc.Encoding(intEncoding)
 	}
 
 	return encoding, nil

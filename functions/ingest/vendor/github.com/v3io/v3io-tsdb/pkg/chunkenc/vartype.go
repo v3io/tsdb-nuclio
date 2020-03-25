@@ -30,21 +30,30 @@ import (
 )
 
 const (
-	varTypeNil     byte = 0
-	varTypeBlob    byte = 1
-	varTypeString  byte = 2
-	varTypeBool    byte = 3
+	varTypeNil byte = 0
+	// nolint: deadcode,varcheck
+	varTypeBlob   byte = 1
+	varTypeString byte = 2
+	// nolint: deadcode,varcheck
+	varTypeBool byte = 3
+	// nolint: deadcode,varcheck
 	varTypeFloat32 byte = 4
 	varTypeFloat64 byte = 5
-	varTypeInt8    byte = 8
-	varTypeInt16   byte = 9
-	varTypeInt32   byte = 10
-	varTypeInt64   byte = 11
+	// nolint: deadcode,varcheck
+	varTypeInt8 byte = 8
+	// nolint: deadcode,varcheck
+	varTypeInt16 byte = 9
+	// nolint: deadcode,varcheck
+	varTypeInt32 byte = 10
+	// nolint: deadcode,varcheck
+	varTypeInt64 byte = 11
 )
 
 const (
 	varValueNone byte = 0
+	// nolint: deadcode,varcheck
 	varValueZero byte = 1
+	// nolint: deadcode,varcheck
 	varValueOnes byte = 2
 	varValueAny  byte = 3
 )
@@ -108,36 +117,18 @@ func (a *varAppender) Chunk() Chunk {
 }
 
 func (a *varAppender) Append(t int64, v interface{}) {
-
 	if v == nil {
 		a.appendNoValue(t, varTypeNil, varValueNone)
 		return
 	}
 
-	switch vType := v.(type) {
-	case float64:
-		val := v.(float64)
-		if val == 0 {
-			a.appendNoValue(t, varTypeFloat64, varValueZero)
-			return
-
-		}
-
-		if math.IsNaN(val) {
-			a.appendNoValue(t, varTypeFloat64, varValueNone)
-			return
-		}
-
-		a.appendWithUint(t, varTypeFloat64, math.Float64bits(val))
-
+	switch val := v.(type) {
 	case string:
-		val := []byte(v.(string))
-		a.appendWithValue(t, varTypeString, val)
+		a.appendWithValue(t, varTypeString, []byte(val))
 
 	default:
-		a.logger.Error("unsupported type %v of value %v\n", vType, v)
+		a.logger.Error("unsupported type %T of value %v\n", v, v)
 	}
-
 }
 
 func (a *varAppender) appendNoValue(t int64, varType, varVal byte) {
