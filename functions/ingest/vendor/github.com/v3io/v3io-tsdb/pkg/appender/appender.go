@@ -50,7 +50,7 @@ type MetricState struct {
 	key   string
 	name  string
 	hash  uint64
-	refID uint64
+	refId uint64
 
 	aggrs []*MetricState
 
@@ -122,9 +122,7 @@ type MetricsCache struct {
 	updatesComplete chan int
 	newUpdates      chan int
 
-	lastMetric uint64
-
-	// TODO: consider switching to synch.Map (https://golang.org/pkg/sync/#Map)
+	lastMetric     uint64
 	cacheMetricMap map[cacheKey]*MetricState // TODO: maybe use hash as key & combine w ref
 	cacheRefMap    map[uint64]*MetricState   // TODO: maybe turn to list + free list, periodically delete old matrics
 
@@ -189,7 +187,7 @@ func (mc *MetricsCache) addMetric(hash uint64, name string, metric *MetricState)
 	defer mc.mtx.Unlock()
 
 	mc.lastMetric++
-	metric.refID = mc.lastMetric
+	metric.refId = mc.lastMetric
 	mc.cacheRefMap[mc.lastMetric] = metric
 	mc.cacheMetricMap[cacheKey{name, hash}] = metric
 	if _, ok := mc.NameLabelMap[name]; !ok {
@@ -220,15 +218,6 @@ func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint6
 		return 0, err
 	}
 
-	var isValueVariantType bool
-	// If the value is not of Float type assume it's variant type.
-	switch v.(type) {
-	case int, int64, float64, float32:
-		isValueVariantType = false
-	default:
-		isValueVariantType = true
-	}
-
 	name, key, hash := lset.GetKey()
 	err = utils.IsValidMetricName(name)
 	if err != nil {
@@ -244,15 +233,17 @@ func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint6
 			aggrMetric, ok := mc.getMetric(name, hash)
 			if !ok {
 				aggrMetric = &MetricState{Lset: subLset, key: key, name: name, hash: hash}
-				aggrMetric.store = newChunkStore(mc.logger, subLset.LabelNames(), true)
+				aggrMetric.store = NewChunkStore(mc.logger, subLset.LabelNames(), true)
 				mc.addMetric(hash, name, aggrMetric)
 				aggrMetrics = append(aggrMetrics, aggrMetric)
 			}
 		}
-		metric = &MetricState{Lset: lset, key: key, name: name, hash: hash,
-			aggrs: aggrMetrics, isVariant: isValueVariantType}
-
-		metric.store = newChunkStore(mc.logger, lset.LabelNames(), false)
+		metric = &MetricState{Lset: lset, key: key, name: name, hash: hash, aggrs: aggrMetrics}
+		// if the (first) value is not float, use variant encoding, TODO: test w schema
+		if _, ok := v.(float64); !ok {
+			metric.isVariant = true
+		}
+		metric.store = NewChunkStore(mc.logger, lset.LabelNames(), false)
 		mc.addMetric(hash, name, metric)
 	} else {
 		aggrMetrics = metric.aggrs
@@ -261,27 +252,15 @@ func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint6
 	err = metric.error()
 	metric.setError(nil)
 
-	if isValueVariantType != metric.isVariant {
-		newValueType := "numeric"
-		if isValueVariantType {
-			newValueType = "string"
-		}
-		existingValueType := "numeric"
-		if metric.isVariant {
-			existingValueType = "string"
-		}
-		return 0, errors.Errorf("Cannot append %v type metric to %v type metric.", newValueType, existingValueType)
-	}
-
 	mc.appendTV(metric, t, v)
 	for _, aggrMetric := range aggrMetrics {
 		mc.appendTV(aggrMetric, t, v)
 	}
 
-	return metric.refID, err
+	return metric.refId, err
 }
 
-// fast Add to metric (by refID)
+// fast Add to metric (by refId)
 func (mc *MetricsCache) AddFast(ref uint64, t int64, v interface{}) error {
 
 	err := verifyTimeValid(t)
@@ -309,7 +288,7 @@ func (mc *MetricsCache) AddFast(ref uint64, t int64, v interface{}) error {
 
 func verifyTimeValid(t int64) error {
 	if t > maxUnixTimeMs || t < minimalUnixTimeMs {
-		return fmt.Errorf("time '%d' doesn't seem to be a valid Unix timesamp in milliseconds. The time must be in the years range 1970-2400", t)
+		return fmt.Errorf("Time '%d' doesn't seem to be a valid Unix timesamp in milliseconds. The time must be in the years range 1970-2400.", t)
 	}
 	return nil
 }
@@ -324,7 +303,7 @@ func (mc *MetricsCache) WaitForCompletion(timeout time.Duration) (int, error) {
 	waitChan := make(chan int, 2)
 	mc.asyncAppendChan <- &asyncAppend{metric: nil, t: 0, v: 0, resp: waitChan}
 
-	var maxWaitTime time.Duration
+	var maxWaitTime time.Duration = 0
 
 	if timeout == 0 {
 		maxWaitTime = 24 * time.Hour // Almost-infinite time

@@ -21,7 +21,6 @@ func Run() error {
 
 func tearDown(cmd *tsdbctl.RootCommandeer) {
 	if cmd.Reporter != nil { // could be nil if has failed on initialisation
-		// nolint: errcheck
 		cmd.Reporter.Stop()
 	}
 }

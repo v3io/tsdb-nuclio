@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
 	"github.com/v3io/frames/pb"
 )
 
@@ -37,10 +38,6 @@ type frameImpl struct {
 	indices []Column
 	msg     *pb.Frame
 	names   []string // Created on 1st call to Names
-}
-
-func (fr *frameImpl) NullValuesMap() []*pb.NullValuesMap {
-	return fr.msg.NullValues
 }
 
 // NewFrame returns a new Frame
@@ -120,7 +117,7 @@ func NewFrameFromRows(rows []map[string]interface{}, indices []string, labels ma
 				frameCols[name] = col
 			}
 
-			_ = extendCol(col, rowNum)
+			extendCol(col, rowNum)
 			if err := colAppend(col, value); err != nil {
 				return nil, err
 			}
@@ -129,7 +126,7 @@ func NewFrameFromRows(rows []map[string]interface{}, indices []string, labels ma
 		// Extend columns not in row
 		for name, col := range frameCols {
 			if _, ok := row[name]; !ok {
-				_ = extendCol(col, rowNum+1)
+				extendCol(col, rowNum+1)
 			}
 		}
 	}
