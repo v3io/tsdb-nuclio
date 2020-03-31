@@ -42,11 +42,11 @@ type V3ioSeriesSet struct {
 	interval     int64
 	nullSeries   bool
 	overlapWin   []int
-	aggrSeries   *aggregate.Series
+	aggrSeries   *aggregate.AggregateSeries
 	aggrIdx      int
 	canAggregate bool
 	currSeries   utils.Series
-	aggrSet      *aggregate.Set
+	aggrSet      *aggregate.AggregateSet
 	noAggrLbl    bool
 	baseTime     int64
 }

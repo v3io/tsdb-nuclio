@@ -29,7 +29,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/v3io/v3io-go/pkg/dataplane"
 	"github.com/v3io/v3io-go/pkg/errors"
-	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
 
 // Start event loops for handling metric updates (appends and Get/Update DB responses)
@@ -50,6 +49,7 @@ func (mc *MetricsCache) metricFeed(index int) {
 		inFlight := 0
 		gotData := false
 		gotCompletion := false
+		potentialCompletion := false
 		var completeChan chan int
 
 		for {
@@ -62,11 +62,16 @@ func (mc *MetricsCache) metricFeed(index int) {
 				mc.logger.Debug(`Complete update cycle - "in-flight requests"=%d; "metric queue length"=%d\n`, inFlight, length)
 
 				// If data was sent and the queue is empty, mark as completion
-				if length == 0 && gotData && len(mc.asyncAppendChan) == 0 {
-					gotCompletion = true
-					if completeChan != nil {
-						completeChan <- 0
-						gotData = false
+				if length == 0 && gotData {
+					if len(mc.asyncAppendChan) == 0 {
+						gotCompletion = true
+						if completeChan != nil {
+							completeChan <- 0
+							gotData = false
+							potentialCompletion = false
+						}
+					} else if len(mc.asyncAppendChan) == 1 {
+						potentialCompletion = true
 					}
 				}
 			case app := <-mc.asyncAppendChan:
@@ -78,14 +83,17 @@ func (mc *MetricsCache) metricFeed(index int) {
 					if app.metric == nil {
 						// Handle update completion requests (metric == nil)
 						completeChan = app.resp
-
 						length := mc.metricQueue.Length()
-						if gotCompletion && length == 0 && len(mc.asyncAppendChan) == 0 {
-							completeChan <- 0
-							gotCompletion = false
-							gotData = false
+						if length == 0 && len(mc.asyncAppendChan) == 0 {
+							if gotCompletion || (potentialCompletion && gotData) {
+								completeChan <- 0
+								gotCompletion = false
+								gotData = false
+							}
 						}
+						potentialCompletion = false
 					} else {
+						potentialCompletion = false
 						// Handle append requests (Add / AddFast)
 						gotData = true
 						metric := app.metric
@@ -114,7 +122,6 @@ func (mc *MetricsCache) metricFeed(index int) {
 						}
 						metric.Unlock()
 					}
-
 					// Poll if we have more updates (accelerate the outer select)
 					if i < mc.cfg.BatchSize {
 						select {
@@ -224,7 +231,7 @@ func (mc *MetricsCache) postMetricUpdates(metric *MetricState) {
 
 	metric.Lock()
 	defer metric.Unlock()
-	var sent bool
+	sent := false
 	var err error
 
 	if metric.getState() == storeStatePreGet {
@@ -250,8 +257,14 @@ func (mc *MetricsCache) postMetricUpdates(metric *MetricState) {
 		} else if sent {
 			metric.setState(storeStateUpdate)
 		}
-		if !sent && metric.store.samplesQueueLength() == 0 {
-			metric.setState(storeStateReady)
+		if !sent {
+			if metric.store.samplesQueueLength() == 0 {
+				metric.setState(storeStateReady)
+			} else {
+				if mc.metricQueue.length() > 0 {
+					mc.newUpdates <- mc.metricQueue.length()
+				}
+			}
 		}
 	}
 
@@ -271,7 +284,7 @@ func (mc *MetricsCache) handleResponse(metric *MetricState, resp *v3io.Response,
 
 	if resp.Error != nil && metric.getState() != storeStateGet {
 		req := reqInput.(*v3io.UpdateItemInput)
-		mc.logger.WarnWith("I/O failure", "id", resp.ID, "err", resp.Error, "key", metric.key,
+		mc.logger.ErrorWith("I/O failure", "id", resp.ID, "err", resp.Error, "key", metric.key,
 			"in-flight", mc.updatesInFlight, "mqueue", mc.metricQueue.Length(),
 			"numsamples", metric.store.samplesQueueLength(), "path", req.Path, "update expression", req.Expression)
 	} else {
@@ -294,7 +307,7 @@ func (mc *MetricsCache) handleResponse(metric *MetricState, resp *v3io.Response,
 		} else {
 			clear := func() {
 				resp.Release()
-				metric.store = newChunkStore(mc.logger, metric.Lset.LabelNames(), metric.store.isAggr())
+				metric.store = NewChunkStore(mc.logger, metric.Lset.LabelNames(), metric.store.isAggr())
 				metric.retryCount = 0
 				metric.setState(storeStateInit)
 			}
@@ -305,17 +318,8 @@ func (mc *MetricsCache) handleResponse(metric *MetricState, resp *v3io.Response,
 			// Metrics with too many update errors go into Error state
 			metric.retryCount++
 			if e, hasStatusCode := resp.Error.(v3ioerrors.ErrorWithStatusCode); hasStatusCode && e.StatusCode() != http.StatusServiceUnavailable {
-				// If condition was evaluated as false log this and report this error upstream.
-				if utils.IsFalseConditionError(resp.Error) {
-					req := reqInput.(*v3io.UpdateItemInput)
-					// This might happen on attempt to add metric value of wrong type, i.e. float <-> string
-					errMsg := fmt.Sprintf("trying to ingest values of incompatible data type. Metric %q has not been updated.", req.Path)
-					mc.logger.ErrorWith(errMsg)
-					setError(mc, metric, errors.Wrap(resp.Error, errMsg))
-				} else {
-					mc.logger.ErrorWith(fmt.Sprintf("Chunk update failed with status code %d.", e.StatusCode()))
-					setError(mc, metric, errors.Wrap(resp.Error, fmt.Sprintf("Chunk update failed due to status code %d.", e.StatusCode())))
-				}
+				mc.logger.ErrorWith(fmt.Sprintf("Chunk update failed with status code %d.", e.StatusCode()))
+				setError(mc, metric, errors.Wrap(resp.Error, fmt.Sprintf("Chunk update failed due to status code %d.", e.StatusCode())))
 				clear()
 				return false
 			} else if metric.retryCount == maxRetriesOnWrite {

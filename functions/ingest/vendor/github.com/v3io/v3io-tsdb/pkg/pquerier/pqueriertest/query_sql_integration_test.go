@@ -88,7 +88,8 @@ func (suite *testSQLSyntaxQuerySuite) TestGroupByOneLabelSinglePartition() {
 		agg := set.At().Labels().Get(aggregate.AggregateLabel)
 		groupByValue := set.At().Labels().Get("os")
 		suite.Require().NoError(err)
-		suite.compareMultipleMetrics(data, expected, groupByValue, agg)
+
+		suite.Require().Equal(expected[groupByValue][agg], data, "queried data does not match expected")
 	}
 
 	suite.Require().Equal(4, seriesCount, "series count didn't match expected")
@@ -171,7 +172,8 @@ func (suite *testSQLSyntaxQuerySuite) TestGroupByMultipleLabelsSinglePartition()
 		labelsStr := strings.Join(groupByValue, "-")
 
 		suite.Require().NoError(err)
-		suite.compareMultipleMetrics(data, expected, labelsStr, agg)
+
+		suite.Require().Equal(expected[labelsStr][agg], data, "queried data does not match expected")
 	}
 
 	suite.Require().Equal(6, seriesCount, "series count didn't match expected")
