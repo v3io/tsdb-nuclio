@@ -23,6 +23,12 @@ type Container interface {
 	//
 
 	// GetContainers
+	GetClusterMD(*GetClusterMDInput, interface{}, chan *Response) (*Request, error)
+
+	// GetContainersSync
+	GetClusterMDSync(*GetClusterMDInput) (*Response, error)
+
+	// GetContainers
 	GetContainers(*GetContainersInput, interface{}, chan *Response) (*Request, error)
 
 	// GetContainersSync
@@ -99,6 +105,12 @@ type Container interface {
 
 	// CreateStreamSync
 	CreateStreamSync(*CreateStreamInput) error
+
+	// DescribeStream
+	DescribeStream(*DescribeStreamInput, interface{}, chan *Response) (*Request, error)
+
+	// DescribeStreamSync
+	DescribeStreamSync(*DescribeStreamInput) (*Response, error)
 
 	// DeleteStream
 	DeleteStream(*DeleteStreamInput, interface{}, chan *Response) (*Request, error)
