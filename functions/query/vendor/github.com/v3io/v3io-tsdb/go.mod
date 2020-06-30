@@ -12,6 +12,7 @@ require (
 	github.com/nuclio/zap v0.0.2
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
+	github.com/russross/blackfriday v1.5.2+incompatible // indirect
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.4.0
