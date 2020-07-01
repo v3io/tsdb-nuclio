@@ -66,7 +66,7 @@ type GetClusterMDInput struct {
 }
 type GetClusterMDOutput struct {
 	DataPlaneOutput
-	NumberOfVNs	int
+	NumberOfVNs int
 }
 
 type GetContainerContentsInput struct {
@@ -191,6 +191,7 @@ type PutObjectInput struct {
 	Path   string
 	Offset int
 	Body   []byte
+	Append bool
 }
 
 type DeleteObjectInput struct {
@@ -212,7 +213,7 @@ type PutItemInput struct {
 
 type PutItemOutput struct {
 	DataPlaneInput
-	MtimeSecs int
+	MtimeSecs  int
 	MtimeNSecs int
 }
 
@@ -240,7 +241,7 @@ type UpdateItemInput struct {
 
 type UpdateItemOutput struct {
 	DataPlaneInput
-	MtimeSecs int
+	MtimeSecs  int
 	MtimeNSecs int
 }
 
@@ -304,6 +305,11 @@ type CreateStreamInput struct {
 	Path                 string
 	ShardCount           int
 	RetentionPeriodHours int
+}
+
+type CheckPathExistsInput struct {
+	DataPlaneInput
+	Path string
 }
 
 type DescribeStreamInput struct {
