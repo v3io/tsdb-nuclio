@@ -45,10 +45,20 @@ type Config struct {
 	SessionKey     string `json:"sessionKey,omitempty"`
 
 	// Number of parallel V3IO worker routines
-	Workers int `json:"workers"`
+	Workers            int `json:"workers"`
+	UpdateWorkersPerVN int `json:"updateWorkersPerVN"`
 
 	QuerierCacheSize                 int  `json:"querierCacheSize"`
 	TsdbLoadPartitionsFromSchemaAttr bool `json:"tsdbLoadPartitionsFromSchemaAttr"`
+
+	// History server related configs
+	WriteMonitoringLogsTimeoutSeconds int    `json:writeMonitoringLogsTimeoutSeconds`
+	PendingLogsBatchSize              int    `json:pendingLogsBatchSize`
+	LogsFolderPath                    string `json:logsFolderPath`
+	LogsContainer                     string `json:logsContainer`
+	MaxBytesInNginxRequest            int    `json:maxBytesInNginxRequest`
+	HistoryFileDurationHourSpans      int64  `json:historyFileDurationHourSpans`
+	HistoryFileNum                    int    `json:historyFileNum`
 
 	Backends []*BackendConfig `json:"backends,omitempty"`
 
@@ -126,9 +136,11 @@ type BackendConfig struct {
 	Type                    string `json:"type"` // v3io, csv, ...
 	Name                    string `json:"name"`
 	Workers                 int    `json:"workers"`
+	UpdateWorkersPerVN      int    `json:"updateWorkersPerVN"`
 	V3ioGoWorkers           int    `json:"v3ioGoWorkers"`
 	V3ioGoRequestChanLength int    `json:"v3ioGoRequestChanLength"`
 	MaxConnections          int    `json:"maxConnections"`
+	DialTimeoutSeconds      int    `json:"dialTimeoutSeconds"`
 
 	// backend specific options
 	Options map[string]interface{} `json:"options"`
@@ -189,8 +201,22 @@ func initBackendDefaults(cfg *BackendConfig, framesConfig *Config) {
 		cfg.Workers = framesConfig.Workers
 	}
 
+	if cfg.UpdateWorkersPerVN == 0 {
+		if framesConfig.UpdateWorkersPerVN == 0 {
+			cfg.UpdateWorkersPerVN = 8
+		} else {
+			cfg.UpdateWorkersPerVN = framesConfig.UpdateWorkersPerVN
+		}
+
+	}
+
 	if cfg.MaxConnections == 0 {
-		cfg.MaxConnections = 2048
+		// Generally, on a Linux system, there are 28k ephemeral ports available. We default to a 10k max.
+		cfg.MaxConnections = 10000
+	}
+
+	if cfg.DialTimeoutSeconds == 0 {
+		cfg.DialTimeoutSeconds = 10
 	}
 
 	if cfg.V3ioGoWorkers == 0 {
@@ -198,7 +224,7 @@ func initBackendDefaults(cfg *BackendConfig, framesConfig *Config) {
 		case "csv", "stream":
 			cfg.V3ioGoWorkers = 256
 		default:
-			cfg.V3ioGoWorkers = cfg.MaxConnections / 2
+			cfg.V3ioGoWorkers = 1024
 		}
 	}
 
