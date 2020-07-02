@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/nuclio/handler/format"
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
+	"github.com/v3io/tsdb-nuclio/functions/ingest/format"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 )
