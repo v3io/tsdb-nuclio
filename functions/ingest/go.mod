@@ -27,5 +27,5 @@ require (
 
 replace (
 	github.com/v3io/frames => github.com/v3io/frames v0.7.10
-	github.com/v3io/v3io-tsdb => github.com/v3io/v3io-tsdb v0.10.3
+	github.com/v3io/v3io-tsdb => github.com/v3io/v3io-tsdb v0.10.8
 )
