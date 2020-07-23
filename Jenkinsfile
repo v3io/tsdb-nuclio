@@ -45,7 +45,7 @@ podTemplate(label: "${git_project}-${label}", inheritFrom: "jnlp-docker") {
 
                     stage('push') {
                         container('docker-cmd') {
-                            dockerx.images_push_multi_registries(["tsdb-ingest:${github.DOCKER_TAG_VERSION}","tsdb-query:${github.DOCKER_TAG_VERSION}"], [pipelinex.DockerRepo.ARTIFACTORY_IGUAZIO, pipelinex.DockerRepo.DOCKER_HUB, pipelinex.DockerRepo.QUAY_IO])
+                            dockerx.images_push_multi_registries(["tsdb-ingest:${github.DOCKER_TAG_VERSION}","tsdb-query:${github.DOCKER_TAG_VERSION}"], [pipelinex.DockerRepo.ARTIFACTORY_IGUAZIO, pipelinex.DockerRepo.DOCKER_HUB, pipelinex.DockerRepo.QUAY_IO, pipelinex.DockerRepo.GCR_IO])
                         }
                     }
                 }
