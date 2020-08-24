@@ -1,3 +1,0 @@
-container: "bigdata"
-workers: 1
-loglevel: "info"
