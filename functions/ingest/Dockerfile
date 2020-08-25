@@ -1,4 +1,4 @@
-ARG NUCLIO_TAG=1.4.8
+ARG NUCLIO_TAG=1.4.17
 ARG NUCLIO_ARCH=amd64
 ARG NUCLIO_BASE_IMAGE=alpine:3.7
 ARG NUCLIO_ONBUILD_IMAGE=quay.io/nuclio/handler-builder-golang-onbuild:${NUCLIO_TAG}-${NUCLIO_ARCH}-alpine
