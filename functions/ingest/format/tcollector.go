@@ -56,6 +56,12 @@ func (Ingester tcollectorFormat) Ingest(tsdbAppender tsdb.Appender, event nuclio
 			errBuilder.WriteString(err.Error())
 			errBuilder.WriteString("\n*********************************************************************\n")
 		}
+		_, err = tsdbAppender.WaitForCompletion(0)
+		if err != nil {
+			errBuilder.WriteString(fmt.Sprintf("Failed to wait for completion for metric %s and labels %+v:\n ", tinfo.Metric, labels))
+			errBuilder.WriteString(err.Error())
+			errBuilder.WriteString("\n*********************************************************************\n")
+		}
 
 	}
 	return InternalError(errBuilder.String())
