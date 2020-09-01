@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -9,10 +10,10 @@ import (
 	"github.com/golang/snappy"
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
+	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
 
 type UserData struct {
@@ -36,13 +37,16 @@ func Write(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 		return nil, err
 	}
 
-	// convert the protobuf to samples
-	samples := promWriteRequestToSamples(&promWriteRequest)
-
 	// write to TSDB
-	context.Logger.DebugWith("Got samples", "len", len(samples))
+	context.Logger.DebugWith("Writing samples to TSDB", "series", len(promWriteRequest.Timeseries))
 
-	return nil, nil
+	// write to the TSDB
+	err = writeRequestToTSDB(context, &promWriteRequest)
+	if err != nil {
+		context.Logger.WarnWith("Failed to write request to TSDB", "err", err)
+	}
+
+	return nil, err
 }
 
 // InitContext runs only once when the function runtime starts
@@ -126,22 +130,29 @@ func toNumber(input string, defaultValue int) (int, error) {
 	return strconv.Atoi(input)
 }
 
-func promWriteRequestToSamples(promWriteRequest *prompb.WriteRequest) model.Samples {
-	var samples model.Samples
-	for _, ts := range promWriteRequest.Timeseries {
-		metric := make(model.Metric, len(ts.Labels))
-		for _, l := range ts.Labels {
-			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+func writeRequestToTSDB(context *nuclio.Context, request *prompb.WriteRequest) error {
+	tsdbAppender := context.UserData.(*UserData).TsdbAppender
+
+	// iterate over the series
+	for _, requestTimeseries := range request.Timeseries {
+
+		// convert labels
+		labels := make(utils.Labels, 0, len(requestTimeseries.Labels))
+		for _, requestLabel := range requestTimeseries.Labels {
+			labels = append(labels, utils.Label{
+				Name:  requestLabel.Name,
+				Value: requestLabel.Value,
+			})
 		}
 
-		for _, s := range ts.Samples {
-			samples = append(samples, &model.Sample{
-				Metric:    metric,
-				Value:     model.SampleValue(s.Value),
-				Timestamp: model.Time(s.Timestamp),
-			})
+		// sort the labels
+		sort.Sort(labels)
+
+		// write the samples to the TSDB
+		for _, requestSample := range requestTimeseries.Samples {
+			tsdbAppender.Add(labels, requestSample.Timestamp, requestSample.Value)
 		}
 	}
 
-	return samples
+	return nil
 }
