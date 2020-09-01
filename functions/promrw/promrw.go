@@ -5,8 +5,12 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/v3io/v3io-tsdb/pkg/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 )
@@ -21,22 +25,24 @@ var adapterLock sync.Mutex
 func Write(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
 
 	// decompress the body
-	decompressedBody, err := snappy.Decode(nil, requestBody)
+	decompressedBody, err := snappy.Decode(nil, event.GetBody())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// decode the protobuf
 	var promWriteRequest prompb.WriteRequest
 	if err := proto.Unmarshal(decompressedBody, &promWriteRequest); err != nil {
-		return err
+		return nil, err
 	}
 
 	// convert the protobuf to samples
 	samples := promWriteRequestToSamples(&promWriteRequest)
 
-	// call the handler
-	return samplesHandler(samples)
+	// write to TSDB
+	context.Logger.DebugWith("Got samples", "len", len(samples))
+
+	return nil, nil
 }
 
 // InitContext runs only once when the function runtime starts
