@@ -5,6 +5,7 @@ import (
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
+	"github.com/v3io/v3io-tsdb/pkg/appender"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
 	"github.com/v3io/v3io-tsdb/pkg/utils"
 )
@@ -87,7 +88,7 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 		// convert the map[string]string -> []Labels
 		labels := getLabelsFromRequest(*request.Metric, request.Labels)
 
-		var ref uint64
+		var identifier *appender.MetricIdentifier
 		// iterate over request samples
 		for _, sample := range request.Samples {
 			var value interface{}
@@ -120,10 +121,10 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 			}
 
 			// append sample to metric
-			if ref == 0 {
-				ref, err = tsdbAppender.Add(labels, sampleTime, value)
+			if identifier == nil {
+				identifier, err = tsdbAppender.Add(labels, sampleTime, value)
 			} else {
-				err = tsdbAppender.AddFast(labels, ref, sampleTime, value)
+				err = tsdbAppender.AddFast(identifier, sampleTime, value)
 			}
 			if err != nil {
 				return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
