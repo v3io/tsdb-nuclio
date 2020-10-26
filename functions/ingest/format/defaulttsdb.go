@@ -2,6 +2,7 @@ package format
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/pkg/errors"
@@ -123,7 +124,11 @@ func (Ingester defaultTsdb) Ingest(tsdbAppender tsdb.Appender, event nuclio.Even
 			if ref == 0 {
 				ref, err = tsdbAppender.Add(labels, sampleTime, value)
 			} else {
-				err = tsdbAppender.AddFast(labels, ref, sampleTime, value)
+				err = tsdbAppender.AddFast(ref, sampleTime, value)
+				if err != nil && strings.Contains(err.Error(), "metric not found") {
+					//retry with Add in case ref was evicted from cache
+					ref, err = tsdbAppender.Add(labels, sampleTime, value)
+				}
 			}
 			if err != nil {
 				return BadRequest(errors.Wrap(err, "Failed to add sample").Error())
