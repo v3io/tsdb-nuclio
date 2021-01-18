@@ -4,13 +4,13 @@ go 1.14
 
 require (
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
-	github.com/google/go-cmp v0.4.0 // indirect
+	github.com/google/go-cmp v0.5.4 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/nuclio/errors v0.0.3 // indirect
 	github.com/nuclio/nuclio-sdk-go v0.2.0
-	github.com/nuclio/zap v0.0.3 // indirect
+	github.com/nuclio/zap v0.0.4 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.6.1
 	github.com/v3io/v3io-go v0.2.5-0.20210113095419-6c806b8d5186
 	github.com/v3io/v3io-tsdb v0.11.7
 	golang.org/x/text v0.3.2 // indirect
@@ -19,4 +19,7 @@ require (
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 )
 
-replace github.com/v3io/frames => github.com/v3io/frames v0.8.10
+replace (
+	github.com/v3io/frames => github.com/v3io/frames v0.8.10
+	github.com/v3io/v3io-go => github.com/v3io/v3io-go v0.2.3
+)
