@@ -12,7 +12,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.6.1
 	github.com/v3io/v3io-go v0.2.5-0.20210113095419-6c806b8d5186
-	github.com/v3io/v3io-tsdb v0.11.8
+	github.com/v3io/v3io-tsdb v0.12.0
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20200204135345-fa8e72b47b90 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
@@ -20,6 +20,6 @@ require (
 )
 
 replace (
-	github.com/v3io/frames => github.com/v3io/frames v0.8.10
+	github.com/v3io/frames => github.com/v3io/frames v0.9.0
 	github.com/v3io/v3io-go => github.com/v3io/v3io-go v0.2.3
 )
