@@ -11,7 +11,7 @@ require (
 	github.com/nuclio/zap v0.0.4 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/v3io/v3io-tsdb v0.13.1
-	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/text v0.3.8 // indirect
 	google.golang.org/genproto v0.0.0-20200204135345-fa8e72b47b90 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
